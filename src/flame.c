@@ -136,7 +136,7 @@ void _init_linearize_sensor_data(float *values)
 {
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        values[i] = 256.f;
+        values[i] = 125.f;
     }
 }
 
@@ -151,14 +151,24 @@ void get_linearize_sensor_data(float *values)
         _init_linearize_sensor_data(linearized_values);
         initialized = 1;
     }
-
+    float temp_values[SENSOR_NUM] = {
+        0,
+    };
+    for (int _i = 0; _i < NUMBER_OF_SAMPLES; _i++)
+    {
+        for (int i = 0; i < SENSOR_NUM; i++)
+        {
+            volatile float v = (float)flame_sensors_raw[i];
+            v = v < 1 ? 1.f : v;
+            v = 0xffff / v - 1; // Normalize to [0, 1]
+            v = sqrtf(v);
+            temp_values[i] += v;
+        }
+    }
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        volatile float v = (float)flame_sensors_raw[i];
-        v = v < 1 ? 1.f : v;
-        v = 0xffff / v - 1; // Normalize to [0, 1]
-        v = sqrtf(v);
-        linearized_values[i] = linearized_values[i] * 0.9f + v * 0.1f; // Simple low-pass filter
+        temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
+        linearized_values[i] = linearized_values[i] * (1 - FILTER_COEFFICIENT) + temp_values[i] * FILTER_COEFFICIENT; // Simple low-pass filter
         values[i] = linearized_values[i];
     }
 }
