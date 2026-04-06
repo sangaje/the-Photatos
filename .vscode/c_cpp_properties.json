@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "STM32F411 Cortex-M4",
+            "includePath": [
+                "${workspaceFolder}",
+                "C:/arm-gnu-toolchain-15.2.rel1-mingw-w64-i686-arm-none-eabi/arm-none-eabi/include",
+                "C:/arm-gnu-toolchain-15.2.rel1-mingw-w64-i686-arm-none-eabi/lib/gcc/arm-none-eabi/15.2.1/include"
+            ],
+            "defines": [
+                "STM32F411xE",
+                "__ARM_ARCH_7EM__",
+                "__GNUC__"
+            ],
+            "compilerPath": "C:/arm-gnu-toolchain-15.2.rel1-mingw-w64-i686-arm-none-eabi/bin/arm-none-eabi-gcc.exe",
+            "compilerArgs": [
+                "-mcpu=cortex-m4",
+                "-mthumb",
+                "-mfpu=fpv4-sp-d16",
+                "-mfloat-abi=hard",
+                "-std=gnu99"
+            ],
+            "cStandard": "c99",
+            "intelliSenseMode": "gcc-arm",
+            "forcedInclude": []
+        }
+    ],
+    "version": 4
+}
