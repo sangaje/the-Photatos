@@ -118,11 +118,11 @@ void _ADC_Start(void)
 
 void Flame_Init(int *chs)
 {
-    // #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
+#if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
     SCB->CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2)); /* set CP10 and CP11 Full Access */
     __DSB();                                           // Data Synchronization Barrier (설정 적용 대기)
     __ISB();                                           // Instruction Synchronization Barrier
-                                                       // #endif
+#endif
     _ADC_Init();
 
     for (int i = 0; i < SENSOR_NUM; i++)
@@ -136,7 +136,26 @@ void _init_linearize_sensor_data(float *values)
 {
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        values[i] = 125.f;
+        values[i] = FRAMES_BASIS_BOUNDARY;
+    }
+}
+
+void _sum_sensor_data(float *values, int count)
+{
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        values[i] = 0;
+    }
+    for (int i = 0; i < count; i++)
+    {
+        for (int i = 0; i < SENSOR_NUM; i++)
+        {
+            volatile float v = (float)flame_sensors_raw[i];
+            v = v < 1 ? 1.f : v;
+            v = 0xffff / v - 1; // Normalize to [0, 1]
+            v = sqrtf(v);
+            values[i] += v;
+        }
     }
 }
 
@@ -146,29 +165,24 @@ void get_linearize_sensor_data(float *values)
     static float linearized_values[SENSOR_NUM] = {
         0,
     };
+    static volatile float linearized_values_basis[SENSOR_NUM] = {
+        0,
+    };
+    float temp_values[SENSOR_NUM];
     if (!initialized)
     {
         _init_linearize_sensor_data(linearized_values);
         initialized = 1;
     }
-    float temp_values[SENSOR_NUM] = {
-        0,
-    };
-    for (int _i = 0; _i < NUMBER_OF_SAMPLES; _i++)
-    {
-        for (int i = 0; i < SENSOR_NUM; i++)
-        {
-            volatile float v = (float)flame_sensors_raw[i];
-            v = v < 1 ? 1.f : v;
-            v = 0xffff / v - 1; // Normalize to [0, 1]
-            v = sqrtf(v);
-            temp_values[i] += v;
-        }
-    }
+    _sum_sensor_data(temp_values, NUMBER_OF_SAMPLES);
     for (int i = 0; i < SENSOR_NUM; i++)
     {
         temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
+        if (linearized_values[i] > FRAMES_BASIS_BOUNDARY)
+        {
+            linearized_values_basis[i] = linearized_values_basis[i] * (1 - FILTER_COEFFICIENT) + (temp_values[i] - FRAMES_BASIS_BOUNDARY) * FILTER_COEFFICIENT;
+        }
         linearized_values[i] = linearized_values[i] * (1 - FILTER_COEFFICIENT) + temp_values[i] * FILTER_COEFFICIENT; // Simple low-pass filter
-        values[i] = linearized_values[i];
+        values[i] = linearized_values[i] - linearized_values_basis[i];
     }
 }
