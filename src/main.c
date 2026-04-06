@@ -18,36 +18,27 @@ void Main(void)
 {
 	Sys_Init(115200);
 	printf("ADC Test\n\n");
-	
-	volatile int i;
-	
+
 	for (;;)
 	{
-		
+
 		float flames[SENSOR_NUM] = {
 			0,
 		};
-		volatile float v[3] = {
-			0.f,
-			0.f,
-			0.f,
+		volatile float v[2] = {
+			0,
 		};
-		for (i = 0; i < 4000; i++)
-		{
-			get_linearize_sensor_data(flames);
-			v[0] += flames[0];
-			v[1] += flames[1];
-			v[2] += flames[2];
-		}
-		v[0] = v[0] / 4000.f;
-		v[1] = v[1] / 4000.f;
-		v[2] = v[2] / 4000.f;
+		get_linearize_sensor_data(flames);
+
+		v[0] = -1.f * flames[0] + (flames[1] + flames[2]) / 2.f;
+		v[1] = -1.f * sqrtf(3) * (flames[2] - flames[1]) * 0.5f;
 
 		// printf("Flame Sensor Values: CH0 = %.4f, CH1 = %.4f, CH6 = %.4f\n", v[0], v[1], v[2]);
 		// printf("CH0 = %.4f, CH1 = %.4f, CH6 = %.4f\n", v[0], v[1], v[2]);
-		printf("CH0 = %.4f\n", v[0]);
+		// printf("CH0 = %.4f, CH1 = %.4f, CH6 = %.4f\r", flames[0], flames[1], flames[2]);
+		printf("CH1 = %.4f, CH0 = %.4f, CH6 = %.4f [%.4f, %.4f]\r", flames[0], flames[1], flames[2], v[0], v[1]);
 
-		for (i = 0; i < 0x400000; i++)
+		for (i = 0; i < 0x70000; i++)
 			;
 	}
 }
