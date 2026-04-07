@@ -257,12 +257,13 @@ void get_linearize_sensor_data(volatile float *values)
     for (int i = 0; i < SENSOR_NUM; i++)
     {
         temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
-        if (linearized_values[i] > FRAMES_BASIS_BOUNDARY)
+        if (temp_values[i] > FRAMES_BASIS_BOUNDARY)
         {
             linearized_values_basis[i] = EMA_Filter(temp_values[i] - FRAMES_BASIS_BOUNDARY, linearized_values_basis[i], FILTER_COEFFICIENT);
         }
         linearized_values[i] = EMA_Filter(temp_values[i], linearized_values[i], FILTER_COEFFICIENT); // Simple low-pass filter
         values[i] = linearized_values[i] - linearized_values_basis[i];
+        printf("RAW[%d]=%.4f LIN=%.4f BAS=%.4f OUT=%.4f\n", i, temp_values[i], linearized_values[i], linearized_values_basis[i], values[i]);
     }
 }
 
