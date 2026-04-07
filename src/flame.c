@@ -229,7 +229,7 @@ void _sum_sensor_data(volatile float *values, int count)
  * float ema = EMA_Filter(12.0f, 10.0f, 0.2f);
  * @endcode
  */
-float EMA_Filter(float current_value, float previous_ema, float alpha)
+volatile float EMA_Filter(volatile float current_value, volatile float previous_ema, volatile float alpha)
 {
     return alpha * current_value + (1 - alpha) * previous_ema;
 }
@@ -247,7 +247,7 @@ void get_linearize_sensor_data(volatile float *values)
     static volatile float linearized_values_basis[SENSOR_NUM] = {
         0,
     };
-    float temp_values[SENSOR_NUM];
+    volatile float temp_values[SENSOR_NUM];
     if (!initialized)
     {
         _init_linearize_sensor_data((volatile float *)linearized_values);
@@ -263,7 +263,7 @@ void get_linearize_sensor_data(volatile float *values)
         }
         linearized_values[i] = EMA_Filter(temp_values[i], linearized_values[i], FILTER_COEFFICIENT); // Simple low-pass filter
         values[i] = linearized_values[i] - linearized_values_basis[i];
-        printf("RAW[%d]=%.4f LIN=%.4f BAS=%.4f OUT=%.4f\n", i, temp_values[i], linearized_values[i], linearized_values_basis[i], values[i]);
+        // printf("RAW[%d]=%010.u LIN=%.4f BAS=%.4f OUT=%.4f\n", i, flame_sensors_raw[i], linearized_values[i], linearized_values_basis[i], values[i]);
     }
 }
 
@@ -280,10 +280,26 @@ FireVector_t fire_vector_estimation(volatile float *values)
         .intensity = 0,
     };
 
+    volatile float v[SENSOR_NUM] = {
+        0,
+    };
+    volatile float sum = 0;
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        retv.x += directional_component_vector[i][0] * values[i];
-        retv.y += directional_component_vector[i][1] * values[i];
+        v[i] = values[i];
+        sum += v[i] * v[i];
+    }
+    sum = sqrtf(sum);
+
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        v[i] = v[i] / sum; // 정규화
+    }
+
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        retv.x += directional_component_vector[i][0] * v[i];
+        retv.y += directional_component_vector[i][1] * v[i];
         retv.intensity += values[i];
     }
 
