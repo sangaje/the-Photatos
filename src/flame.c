@@ -205,7 +205,7 @@ void _sum_sensor_data(volatile float *values, int count)
     {
         values[i] = 0;
     }
-    for (int i = 0; i < count; i++)
+    for (int _i = 0; _i < count; _i++)
     {
         for (int i = 0; i < SENSOR_NUM; i++)
         {
