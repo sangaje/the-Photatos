@@ -6,8 +6,8 @@
 #include <stdio.h>
 
 #define STEP_DELAY_MS 2
-#define SERVO_MIN_ANGLE 30
-#define SERVO_MAX_ANGLE 150
+#define SERVO_MIN_ANGLE 0
+#define SERVO_MAX_ANGLE 180
 #define SERVO_INIT_ANGLE 90
 
 #define SQRT3_CONST 1.7320508f
@@ -90,7 +90,7 @@ void Main(void)
         v[0] = fire_vector.x;
         v[1] = fire_vector.y;
 
-        printf("F=[%.4f %.4f %.4f] V=[%.4f %.4f] SUM=%.4f ANG=%d\r",
+        printf("F=[%.4f %.4f %.4f] V=[%.4f %.4f] SUM=%.4f ANG=%d           \r",
                flames[0], flames[1], flames[2], v[0], v[1], fire_vector.intensity, servo_angle);
 
         // Servo_Set_Angle(90);
@@ -99,15 +99,15 @@ void Main(void)
         {
             if (current++ % 2 == 0)
             {
-                Stepper_Move_Relative((int)(fire_vector.x * 100.f));
-                TIM2_Delay(100);
+                Stepper_Move_Relative(-(int)(fire_vector.x * 150.f));
+                // TIM2_Delay(100);
             }
             else
             {
-                servo_angle -= (int)(fire_vector.y * 25.f);
+                servo_angle -= (int)(fire_vector.y * 50.f);
                 servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE : ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
                 Servo_Set_Angle(servo_angle);
-                TIM2_Delay(100);
+                // TIM2_Delay(100);
             }
         }
 
