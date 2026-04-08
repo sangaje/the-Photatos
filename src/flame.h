@@ -1,9 +1,9 @@
 #include "stm32f4xx.h"
 
-#define SENSOR_NUM 3
+#define SENSOR_NUM 4
 #define SAMPLING_TIME 0x7
 #define FILTER_COEFFICIENT 0.5f
-#define FRAMES_BASIS_BOUNDARY 300.f
+#define FRAMES_BASIS_BOUNDARY 240.f
 #define NUMBER_OF_SAMPLES 1
 
 typedef struct
