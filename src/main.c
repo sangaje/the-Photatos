@@ -71,9 +71,11 @@ void Main(void)
 
         v[0] = fire_vector.x;
         v[1] = fire_vector.y;
+        extern uint16_t flame_sensors_raw[SENSOR_NUM];
 
-        printf("F=[%.4f %.4f %.4f] V=[%.4f %.4f] SUM=%.4f ANG=%d\r",
-               flames[0], flames[1], flames[2], v[0], v[1], fire_vector.intensity, servo_angle);
+        printf("RAW=[%d %d %d %d] F=[%.4f %.4f %.4f %.4f] V=[%.4f %.4f] SUM=%.4f ANG=%d\r",
+               flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
+               flames[0], flames[1], flames[2], flames[3], v[0], v[1], fire_vector.intensity, servo_angle);
 
         // Servo_Set_Angle(90);
 
@@ -120,8 +122,9 @@ void Main(void)
         }
 
         // --- [로직 3] 워터펌프 버튼 토글 제어 ---
-        if (IS_BTN_PRESSED && prev_btn_state == 0)
+        if (IS_BTN_PRESSED && !prev_btn_state)
         {
+            printf("\n[BUTTON PRESSED] Toggling Pump State...\n");
             pump_status = !pump_status; // 상태 반전
 
             if (pump_status)
