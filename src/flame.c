@@ -5,11 +5,13 @@
 #include <math.h>
 #include <stdio.h>
 
-volatile uint16_t flame_sensors_raw[SENSOR_NUM] = {
+volatile uint16_t flame_sensors_raw[SENSOR_NUM + 1] = {
     0x0,
 };
 
-volatile float directional_component_vector[SENSOR_NUM][2] = {{1, 0}};
+volatile uint16_t *others_raw = flame_sensors_raw + SENSOR_NUM;
+
+volatile float directional_component_vector[SENSOR_NUM][2] = {{0, 1}};
 
 /**
  * @brief Initialize ADC peripheral global configuration for multi-channel sampling.
@@ -121,7 +123,7 @@ void _DMA_Init(void)
 
     DMA2_Stream0->PAR = (uint32_t)&(ADC1->DR);
     DMA2_Stream0->M0AR = (uint32_t)flame_sensors_raw;
-    DMA2_Stream0->NDTR = SENSOR_NUM;
+    DMA2_Stream0->NDTR = SENSOR_NUM + 1; // 센서 수 + 1 (others_raw 공간)
 
     // CR 설정 + 맨 마지막에 (1 << 0)을 더해서 EN(Enable) 시킴
     DMA2_Stream0->CR = (0 << 25) | (2 << 16) | (1 << 13) | (1 << 11) |
@@ -154,10 +156,15 @@ void _Init_Directional_Component_Vector(void)
     volatile float sin_val = sinf(angle_increment);
     for (int i = 1; i < SENSOR_NUM; i++)
     {
-        volatile float y = directional_component_vector[i - 1][0];
-        volatile float x = directional_component_vector[i - 1][1];
-        directional_component_vector[i][0] = sin_val * x + cos_val * y;
-        directional_component_vector[i][1] = cos_val * x - sin_val * y;
+        volatile float x = directional_component_vector[i - 1][0];
+        volatile float y = directional_component_vector[i - 1][1];
+        directional_component_vector[i][0] = cos_val * x - sin_val * y;
+        directional_component_vector[i][1] = sin_val * x + cos_val * y;
+    }
+    for (size_t i = 0; i < SENSOR_NUM; i++)
+    {
+        printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
+        /* code */
     }
 }
 
@@ -298,8 +305,8 @@ FireVector_t fire_vector_estimation(volatile float *values)
 
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        retv.x += directional_component_vector[i][1] * v[i];
-        retv.y += directional_component_vector[i][0] * v[i];
+        retv.x += directional_component_vector[i][0] * v[i];
+        retv.y += directional_component_vector[i][1] * v[i];
         retv.intensity += values[i];
     }
 
