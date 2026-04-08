@@ -1,7 +1,11 @@
+#include "buzzer.h"
 #include "device_driver.h"
 #include "flame.h"
+#include "led.h"
+#include "pump.h"
 #include "servo.h"
 #include "stepper.h"
+#include "water_sensor.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -9,20 +13,10 @@
 #define SERVO_MIN_ANGLE 30
 #define SERVO_MAX_ANGLE 150
 #define SERVO_INIT_ANGLE 90
+#define BTN_PORT GPIOC                                                    // PC
+#define BTN_PIN 13                                                        // Pin 13
+#define IS_BTN_PRESSED (Macro_Check_Bit_Set(BTN_PORT->IDR, BTN_PIN) == 0) // Press = 0
 
-#define SQRT3_CONST 1.7320508f
-
-static const unsigned char step_table[8][4] = {
-    {1, 0, 0, 0},
-    {1, 0, 0, 1},
-    {0, 0, 0, 1},
-    {0, 0, 1, 1},
-    {0, 0, 1, 0},
-    {0, 1, 1, 0},
-    {0, 1, 0, 0},
-    {1, 1, 0, 0}};
-
-static int step_seq = 0;
 static int servo_angle = SERVO_INIT_ANGLE;
 static int current = 0;
 static void Sys_Init(int baud)
@@ -34,17 +28,19 @@ static void Sys_Init(int baud)
     Uart2_Init(baud);
     LED_Init();
 
+    Pump_Init();        // PC4
+    WaterSensor_Init(); // PC3 (ADC CH13)
+    Buzzer_Init();      // PC0
+    LED_Init();         // PC1, PC2
+
+    Stepper_Init();
+    Servo_Init();
+    Servo_Set_Angle(SERVO_INIT_ANGLE);
+
     /* flame 3채널 초기화 */
     Flame_Init(chs);
 }
-void Main(void);
 int main(void)
-{
-    Main();
-    return 0;
-}
-
-void Main(void)
 {
     volatile float flames[SENSOR_NUM] = {
         0.0f,
@@ -55,9 +51,9 @@ void Main(void)
 
     Sys_Init(115200);
 
-    Stepper_Init();
-    Servo_Init();
-    Servo_Set_Angle(SERVO_INIT_ANGLE);
+    unsigned char pump_status = 0;      // 0: OFF, 1: ON
+    unsigned char prev_btn_state = 0;   // 버튼 엣지 검출용
+    unsigned char water_error_flag = 0; // 물 부족 경고 중복 실행 방지용
 
     printf("\n=== BASIC + FLAME MONITOR START ===\n");
 
@@ -111,6 +107,55 @@ void Main(void)
             }
         }
 
+        // --- [로직 1 & 2] 수위 센서 및 LED/부저 제어 ---
+        int water_level = WaterSensor_Read();
+
+        if (water_level >= WATER_DETECTED)
+        {
+            // [조건 1] 물이 감지된 경우
+            LED_Green_On();
+            LED_Red_Off();
+            water_error_flag = 0; // 물이 다시 찼으므로 플래그 리셋
+        }
+        else if (water_level < WATER_EMPTY)
+        {
+            // [조건 2] 물이 감지되지 않는 경우
+            LED_Green_Off();
+            LED_Red_On();
+
+            // 처음 물 부족이 감지된 순간에만 부저를 3초간 울림
+            if (water_error_flag == 0)
+            {
+                Buzzer_On();
+                Pump_Delay(3000); // 3초 대기 (소프트웨어 지연)
+                Buzzer_Off();
+                water_error_flag = 1; // 다시 물이 차기 전까지는 부저를 울리지 않음
+            }
+        }
+
+        // --- [로직 3] 워터펌프 버튼 토글 제어 ---
+        if (IS_BTN_PRESSED && prev_btn_state == 0)
+        {
+            pump_status = !pump_status; // 상태 반전
+
+            if (pump_status)
+            {
+                Pump_On();
+            }
+            else
+            {
+                Pump_Off();
+            }
+
+            // 버튼 디바운싱
+            Pump_Delay(200);
+        }
+
+        // 현재 버튼 상태 저장
+        prev_btn_state = IS_BTN_PRESSED;
+
         TIM2_Delay(10);
     }
+
+    return 0;
 }
