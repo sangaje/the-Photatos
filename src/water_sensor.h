@@ -4,10 +4,10 @@
 #include "device_driver.h"
 
 /* --- Hardware Configuration --- */
-#define WATER_PORT          GPIOA           // Target Port (e.g., GPIOA)
-#define WATER_RCC_BIT       0               // RCC AHB1ENR bit (0:A)
-#define WATER_PIN           6               // Target Pin Number (PA6)
-#define WATER_ADC_CH        6               // Matching ADC Channel (Channel 6)
+#define WATER_PORT          GPIOC           // Target Port (e.g., GPIOC)
+#define WATER_RCC_BIT       2               // RCC AHB1ENR bit (0:A)
+#define WATER_PIN           3               // Target Pin Number (PC3)
+#define WATER_ADC_CH        13               // Matching ADC Channel (Channel 13)
 
 /* --- Water Level Thresholds --- */
 #define WATER_DETECTED      1000            // Threshold for sufficient water
