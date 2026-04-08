@@ -40,7 +40,7 @@ static void Sys_Init(int baud)
     /* flame 3채널 초기화 */
     Flame_Init(chs);
 }
-int main(void)
+void Main(void)
 {
     volatile float flames[SENSOR_NUM] = {
         0.0f,
@@ -58,22 +58,8 @@ int main(void)
     printf("\n=== BASIC + FLAME MONITOR START ===\n");
 
     printf("SELF TEST: STEPPER + SERVO\n");
-    // Stepper_Move_Relative(50);
-    // TIM2_Delay(500);
-    // Stepper_Move_Relative(-50);
-    // TIM2_Delay(500);
-
     Servo_Set_Angle(90);
-    // UART2_Printf("SERVO 60\n");
     TIM2_Delay(800);
-
-    // Servo_Set_Angle(120);
-    // UART2_Printf("SERVO 120\n");
-    TIM2_Delay(800);
-
-    // Servo_Set_Angle(SERVO_INIT_ANGLE);
-    // UART2_Printf("SERVO 90\n");
-    // TIM2_Delay(800);
 
     printf("SELF TEST DONE\n");
 
@@ -157,5 +143,4 @@ int main(void)
         TIM2_Delay(10);
     }
 
-    return 0;
 }
