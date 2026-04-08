@@ -298,8 +298,8 @@ FireVector_t fire_vector_estimation(volatile float *values)
 
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        retv.x += directional_component_vector[i][0] * v[i];
-        retv.y += directional_component_vector[i][1] * v[i];
+        retv.x += directional_component_vector[i][1] * v[i];
+        retv.y += directional_component_vector[i][0] * v[i];
         retv.intensity += values[i];
     }
 
