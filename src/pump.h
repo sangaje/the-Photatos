@@ -12,6 +12,8 @@
 void Pump_Init(void);                       // Initialize Pump
 void Pump_On(void);                         // Turn Pump ON
 void Pump_Off(void);                        // Turn Pump OFF
-void Pump_Delay(volatile int count);        // Software Delay
+void Pump_Delay(volatile int count);
+void Pump_Control_Update(int step_x, int servo_y, float intensity, const volatile float *flames, int flame_count);
+unsigned char Pump_Is_On(void);        // Software Delay
 
 #endif
