@@ -64,7 +64,7 @@ void Stepper_Move_Relative(int steps)
     int i;
     if (pump_auto_state)
     {
-        steps /= 3; // 펌프가 켜져 있을 때는 스텝 속도를 1/10로 줄임
+        steps /= 10; // 펌프가 켜져 있을 때는 스텝 속도를 1/10로 줄임
     }
 
     if(steps > 0)
