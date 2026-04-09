@@ -5,7 +5,6 @@
 #include "pump.h"
 #include "servo.h"
 #include "stepper.h"
-#include "water_sensor.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -16,11 +15,7 @@
 #define AIM_SERVO_ACT_DEADBAND 1
 
 #define STEPPER_X_DEADBAND 8
-#define AIM_STEPPER_ACT_DEADBAND 2
 
-#define BTN_PORT GPIOC                                                    // PC
-#define BTN_PIN 13                                                        // Pin 13
-#define IS_BTN_PRESSED (Macro_Check_Bit_Set(BTN_PORT->IDR, BTN_PIN) == 0) // Press = 0
 
 static volatile float servo_angle = SERVO_INIT_ANGLE;
 static int current = 0;
@@ -96,58 +91,10 @@ void Main(void)
                     mode = 1;
                 }
             }
-            else
-            {
-                x = 0;  /* for the printf */
-            }
-
-            /* --- servo (tilt) --- */
-            volatile float y = -(fire_vector.y * 30.f);
-            // y = y > 3 ? 3 : (y < -3 ? -3 : y);
-
-            if (y > AIM_SERVO_ACT_DEADBAND || y < -AIM_SERVO_ACT_DEADBAND)
-            {
-                servo_angle -= y;
-                servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE :
-                            ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
-                Servo_Set_Angle(servo_angle+10);
-            }
-            // int new_servo_angle = servo_angle - y;
-            // new_servo_angle = (new_servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE :
-            //                 ((new_servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : new_servo_angle);
-
-            // /* only command servo if target actually moved enough */
-            // int delta = new_servo_angle - last_servo_cmd;
-            // if (delta >= AIM_SERVO_ACT_DEADBAND || delta <= -AIM_SERVO_ACT_DEADBAND)
-            // {
-            //     Servo_Set_Angle(new_servo_angle);
-            //     last_servo_cmd = new_servo_angle;
-            // }
-            // servo_angle = new_servo_angle;
+            // printf("Stepper Move: %d steps\n", x);
+            printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f ANG=%4d x=%d y=%d\n",
+                   flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
+                   flames[0], flames[1], flames[2], flames[3], v[0], v[1], fire_vector.intensity, servo_angle, x, -(int)(fire_vector.y * 100.f));
         }
-
-        // --- [로직 3] 워터펌프 버튼 토글 제어 ---
-        if (IS_BTN_PRESSED && !prev_btn_state)
-        {
-            printf("\n[BUTTON PRESSED] Toggling Pump State...\n");
-            pump_status = !pump_status; // 상태 반전
-
-            if (pump_status)
-            {
-                Pump_On();
-            }
-            else
-            {
-                Pump_Off();
-            }
-
-            // 버튼 디바운싱
-            Pump_Delay(200);
-        }
-
-        // 현재 버튼 상태 저장
-        prev_btn_state = IS_BTN_PRESSED;
-
-        TIM2_Delay(50);
     }
 }
