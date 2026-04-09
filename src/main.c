@@ -52,7 +52,7 @@ void Main(void)
     volatile float flames[SENSOR_NUM] = {
         0.0f,
     };
-    float v[2] = {
+    volatile float v[2] = {
         0.0f,
     };
 
