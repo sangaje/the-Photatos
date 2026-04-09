@@ -5,11 +5,9 @@
 #include <math.h>
 #include <stdio.h>
 
-volatile uint16_t flame_sensors_raw[SENSOR_NUM + 1] = {
+volatile uint16_t flame_sensors_raw[SENSOR_NUM] = {
     0x0,
 };
-
-volatile uint16_t *others_raw = flame_sensors_raw + SENSOR_NUM;
 
 volatile float directional_component_vector[SENSOR_NUM][2] = {{0, 1}};
 
@@ -123,7 +121,7 @@ void _DMA_Init(void)
 
     DMA2_Stream0->PAR = (uint32_t)&(ADC1->DR);
     DMA2_Stream0->M0AR = (uint32_t)flame_sensors_raw;
-    DMA2_Stream0->NDTR = SENSOR_NUM + 1; // 센서 수 + 1 (others_raw 공간)
+    DMA2_Stream0->NDTR = SENSOR_NUM; // 센서 수
 
     // CR 설정 + 맨 마지막에 (1 << 0)을 더해서 EN(Enable) 시킴
     DMA2_Stream0->CR = (0 << 25) | (2 << 16) | (1 << 13) | (1 << 11) |
