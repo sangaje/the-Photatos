@@ -46,7 +46,7 @@ void Main(void)
     volatile float flames[SENSOR_NUM] = {
         0.0f,
     };
-    float v[2] = {
+    volatile float v[2] = {
         0.0f,
     };
 
@@ -79,14 +79,14 @@ void Main(void)
 
         if (fire_vector.intensity < 100.f)
         {
-            int x = -(int)(fire_vector.x * 200.f);
-            x = x > 50 ? 50 : (x < -50 ? -50 : x);
+            int x = -(int)(fire_vector.x * 70.f);
+            x = x > 30 ? 30 : (x < -30 ? -30 : x);
             // if (mode == 0)
             Stepper_Move_Relative(x);
             // Stepper_Move_Relative(-(int)(fire_vector.x * 150.f));
-            int y = -(int)(fire_vector.y * 100.f);
+            int y = -(int)(fire_vector.y * 30.f);
             // printf("Raw Y: %.4f, Mapped Y: %d\n", (fire_vector.y * 50.f), y);
-            y = y > 3 ? 3 : (y < -3 ? -3 : y);
+            y = y > 1 ? 1 : (y < -1 ? -1 : y);
             servo_angle -= y;
             servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE : ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
             Servo_Set_Angle(servo_angle);
