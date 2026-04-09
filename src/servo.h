@@ -6,7 +6,7 @@
 #define SERVO_INIT_ANGLE 90
 
 void Servo_Init(void);
-void Servo_Set_Angle(int angle);
+void Servo_Set_Angle(volatile float angle);
 int  Servo_Get_Angle(void);
 
 #endif

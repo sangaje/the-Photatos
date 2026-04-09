@@ -1,7 +1,7 @@
 #include "device_driver.h"
 #include "servo.h"
 
-static int servo_angle = SERVO_INIT_ANGLE;
+static volatile float servo_angle = SERVO_INIT_ANGLE;
 
 void Servo_Init(void)
 {
@@ -36,7 +36,7 @@ void Servo_Init(void)
     Servo_Set_Angle(SERVO_INIT_ANGLE);
 }
 
-void Servo_Set_Angle(int angle)
+void Servo_Set_Angle(volatile float angle)
 {
     unsigned int pulse;
 
