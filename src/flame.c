@@ -9,6 +9,11 @@ volatile uint16_t flame_sensors_raw[SENSOR_NUM] = {
     0x0,
 };
 
+volatile float directional_component_vector[SENSOR_NUM][2] = {{0, 1}};
+
+/**
+ * @brief Initialize ADC peripheral global configuration for multi-channel sampling.
+ */
 void _ADC_Init(void)
 {
     // 2. ADC 기본 설정
@@ -24,6 +29,10 @@ void _ADC_Init(void)
     Macro_Write_Block(ADC1->SQR1, 0xF, SENSOR_NUM - 1, 20); // 3개 채널 (L=2)
 }
 
+/**
+ * @brief Configure one ADC channel's sampling time and sequence order.
+ * @param ch ADC channel number.
+ */
 void _ADC_Config_By_Channel(int ch)
 {
     static int _i = 0;
@@ -47,6 +56,11 @@ void _ADC_Config_By_Channel(int ch)
     _i++;
 }
 
+/**
+ * @brief Resolve GPIO port from ADC channel index and enable the matching GPIO clock.
+ * @param ch ADC channel number.
+ * @return Pointer to the GPIO peripheral, or NULL if the channel is invalid.
+ */
 GPIO_TypeDef *Get_GPIO_Port_by_Channel(int ch)
 {
     GPIO_TypeDef *GPIOx;
@@ -76,6 +90,10 @@ GPIO_TypeDef *Get_GPIO_Port_by_Channel(int ch)
     return GPIOx;
 }
 
+/**
+ * @brief Initialize GPIO pin for the given ADC channel and bind it to ADC sequencing.
+ * @param ch ADC channel number.
+ */
 void _GPIO_Init_by_Channel(int ch)
 {
     GPIO_TypeDef *GPIOx = Get_GPIO_Port_by_Channel(ch);
@@ -88,6 +106,9 @@ void _GPIO_Init_by_Channel(int ch)
     _ADC_Config_By_Channel(ch);
 }
 
+/**
+ * @brief Initialize DMA2 Stream0 for circular ADC data transfer into sensor buffer.
+ */
 void _DMA_Init(void)
 {
     // 4. DMA2_Stream0 설정 (여기가 핵심!)
@@ -100,13 +121,16 @@ void _DMA_Init(void)
 
     DMA2_Stream0->PAR = (uint32_t)&(ADC1->DR);
     DMA2_Stream0->M0AR = (uint32_t)flame_sensors_raw;
-    DMA2_Stream0->NDTR = SENSOR_NUM;
+    DMA2_Stream0->NDTR = SENSOR_NUM; // 센서 수
 
     // CR 설정 + 맨 마지막에 (1 << 0)을 더해서 EN(Enable) 시킴
     DMA2_Stream0->CR = (0 << 25) | (2 << 16) | (1 << 13) | (1 << 11) |
                        (1 << 10) | (1 << 8) | (1 << 0); // 맨 끝에 1(EN) 추가!
 }
 
+/**
+ * @brief Start ADC scan conversion using software trigger.
+ */
 void _ADC_Start(void)
 {
     Macro_Set_Bit(ADC1->CR1, 8); // SCAN Mode ON
@@ -116,6 +140,36 @@ void _ADC_Start(void)
     Macro_Set_Bit(ADC1->CR2, 30); // SWSTART: 변환 시작!
 }
 
+/**
+ * @brief Initialize per-sensor directional unit vectors on a circular layout.
+ * @example
+ * @code
+ * _Init_Directional_Component_Vector();
+ * @endcode
+ */
+void _Init_Directional_Component_Vector(void)
+{
+    volatile float angle_increment = 2 * M_PI / SENSOR_NUM;
+    volatile float cos_val = cosf(angle_increment);
+    volatile float sin_val = sinf(angle_increment);
+    for (int i = 1; i < SENSOR_NUM; i++)
+    {
+        volatile float x = directional_component_vector[i - 1][0];
+        volatile float y = directional_component_vector[i - 1][1];
+        directional_component_vector[i][0] = cos_val * x - sin_val * y;
+        directional_component_vector[i][1] = sin_val * x + cos_val * y;
+    }
+    for (size_t i = 0; i < SENSOR_NUM; i++)
+    {
+        printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
+        /* code */
+    }
+}
+
+/**
+ * @brief Initialize flame sensor acquisition pipeline (GPIO, ADC, DMA, and start conversion).
+ * @param chs Pointer to ADC channel list for each sensor.
+ */
 void Flame_Init(int *chs)
 {
 #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
@@ -130,9 +184,14 @@ void Flame_Init(int *chs)
 
     _DMA_Init();
     _ADC_Start();
+    _Init_Directional_Component_Vector();
 }
 
-void _init_linearize_sensor_data(float *values)
+/**
+ * @brief Initialize linearized sensor output array with boundary baseline values.
+ * @param values Output array to initialize.
+ */
+void _init_linearize_sensor_data(volatile float *values)
 {
     for (int i = 0; i < SENSOR_NUM; i++)
     {
@@ -140,13 +199,18 @@ void _init_linearize_sensor_data(float *values)
     }
 }
 
-void _sum_sensor_data(float *values, int count)
+/**
+ * @brief Accumulate normalized sensor magnitudes across multiple samples.
+ * @param values Output accumulation array.
+ * @param count Number of samples to accumulate.
+ */
+void _sum_sensor_data(volatile float *values, int count)
 {
     for (int i = 0; i < SENSOR_NUM; i++)
     {
         values[i] = 0;
     }
-    for (int i = 0; i < count; i++)
+    for (int _i = 0; _i < count; _i++)
     {
         for (int i = 0; i < SENSOR_NUM; i++)
         {
@@ -159,30 +223,94 @@ void _sum_sensor_data(float *values, int count)
     }
 }
 
-void get_linearize_sensor_data(float *values)
+/**
+ * @brief Compute the exponential moving average for a single sample.
+ * @param current_value Current measurement value.
+ * @param previous_ema Previous EMA result.
+ * @param alpha EMA smoothing factor in the range [0, 1].
+ * @return Updated EMA value.
+ * @example
+ * @code
+ * float ema = EMA_Filter(12.0f, 10.0f, 0.2f);
+ * @endcode
+ */
+volatile float EMA_Filter(volatile float current_value, volatile float previous_ema, volatile float alpha)
+{
+    return alpha * current_value + (1 - alpha) * previous_ema;
+}
+
+/**
+ * @brief Compute filtered, linearized flame sensor values with baseline compensation.
+ * @param values Output array that receives processed sensor values.
+ */
+void get_linearize_sensor_data(volatile float *values)
 {
     static int initialized = 0;
-    static float linearized_values[SENSOR_NUM] = {
+    static volatile float linearized_values[SENSOR_NUM] = {
         0,
     };
     static volatile float linearized_values_basis[SENSOR_NUM] = {
         0,
     };
-    float temp_values[SENSOR_NUM];
+    volatile float temp_values[SENSOR_NUM];
     if (!initialized)
     {
-        _init_linearize_sensor_data(linearized_values);
+        _init_linearize_sensor_data((volatile float *)linearized_values);
         initialized = 1;
     }
-    _sum_sensor_data(temp_values, NUMBER_OF_SAMPLES);
+    _sum_sensor_data((volatile float *)temp_values, NUMBER_OF_SAMPLES);
     for (int i = 0; i < SENSOR_NUM; i++)
     {
         temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
-        if (linearized_values[i] > FRAMES_BASIS_BOUNDARY)
+        if (temp_values[i] > FRAMES_BASIS_BOUNDARY)
         {
-            linearized_values_basis[i] = linearized_values_basis[i] * (1 - FILTER_COEFFICIENT) + (temp_values[i] - FRAMES_BASIS_BOUNDARY) * FILTER_COEFFICIENT;
+            linearized_values_basis[i] = EMA_Filter(temp_values[i] - FRAMES_BASIS_BOUNDARY, linearized_values_basis[i], FILTER_COEFFICIENT);
         }
-        linearized_values[i] = linearized_values[i] * (1 - FILTER_COEFFICIENT) + temp_values[i] * FILTER_COEFFICIENT; // Simple low-pass filter
+        linearized_values[i] = EMA_Filter(temp_values[i], linearized_values[i], FILTER_COEFFICIENT); // Simple low-pass filter
         values[i] = linearized_values[i] - linearized_values_basis[i];
+        // printf("RAW[%d]=%010.u LIN=%.4f BAS=%.4f OUT=%.4f\n", i, flame_sensors_raw[i], linearized_values[i], linearized_values_basis[i], values[i]);
     }
+}
+
+/**
+ * @brief Estimate the fire direction vector and average intensity from sensor values.
+ * @param values Processed sensor values used for vector accumulation.
+ * @return FireVector_t containing x/y direction and averaged intensity.
+ */
+FireVector_t fire_vector_estimation(volatile float *values)
+{
+    FireVector_t retv = {
+        .x = 0,
+        .y = 0,
+        .intensity = 0,
+    };
+
+    volatile float v[SENSOR_NUM] = {
+        0,
+    };
+    volatile float sum = 0;
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        v[i] = values[i];
+        sum += v[i] * v[i];
+    }
+    sum = sqrtf(sum);
+
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        v[i] = v[i] / sum; // 정규화
+    }
+
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        retv.x += directional_component_vector[i][0] * v[i];
+        retv.y += directional_component_vector[i][1] * v[i];
+        retv.intensity += values[i];
+    }
+
+    retv.y = -retv.y / SENSOR_NUM;                // 평균 방향 벡터 y
+    retv.x = -retv.x / SENSOR_NUM;                // 평균 방향 벡터 x
+    retv.intensity = retv.intensity / SENSOR_NUM; // 평균 강도
+
+    return retv;
 }
