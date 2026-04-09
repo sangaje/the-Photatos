@@ -5,7 +5,6 @@
 #include "pump.h"
 #include "servo.h"
 #include "stepper.h"
-#include "water_sensor.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -14,9 +13,7 @@
 #define SERVO_MAX_ANGLE 180
 #define SERVO_INIT_ANGLE 55
 #define STEPPER_X_DEADBAND 8
-#define BTN_PORT GPIOC                                                    // PC
-#define BTN_PIN 13                                                        // Pin 13
-#define IS_BTN_PRESSED (Macro_Check_Bit_Set(BTN_PORT->IDR, BTN_PIN) == 0) // Press = 0
+
 
 static int servo_angle = SERVO_INIT_ANGLE;
 static int current = 0;
@@ -100,55 +97,5 @@ void Main(void)
                    flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
                    flames[0], flames[1], flames[2], flames[3], v[0], v[1], fire_vector.intensity, servo_angle, x, -(int)(fire_vector.y * 100.f));
         }
-
-        // // --- [로직 1 & 2] 수위 센서 및 LED/부저 제어 ---
-        // int water_level = WaterSensor_Read();
-
-        // if (water_level >= WATER_DETECTED)
-        // {
-        //     // [조건 1] 물이 감지된 경우
-        //     LED_Green_On();
-        //     LED_Red_Off();
-        //     water_error_flag = 0; // 물이 다시 찼으므로 플래그 리셋
-        // }
-        // else if (water_level < WATER_EMPTY)
-        // {
-        //     // [조건 2] 물이 감지되지 않는 경우
-        //     LED_Green_Off();
-        //     LED_Red_On();
-
-        //     // 처음 물 부족이 감지된 순간에만 부저를 3초간 울림
-        //     if (water_error_flag == 0)
-        //     {
-        //         Buzzer_On();
-        //         Pump_Delay(3000); // 3초 대기 (소프트웨어 지연)
-        //         Buzzer_Off();
-        //         water_error_flag = 1; // 다시 물이 차기 전까지는 부저를 울리지 않음
-        //     }
-        // }
-
-        // --- [로직 3] 워터펌프 버튼 토글 제어 ---
-        if (IS_BTN_PRESSED && !prev_btn_state)
-        {
-            printf("\n[BUTTON PRESSED] Toggling Pump State...\n");
-            pump_status = !pump_status; // 상태 반전
-
-            if (pump_status)
-            {
-                Pump_On();
-            }
-            else
-            {
-                Pump_Off();
-            }
-
-            // 버튼 디바운싱
-            Pump_Delay(200);
-        }
-
-        // 현재 버튼 상태 저장
-        prev_btn_state = IS_BTN_PRESSED;
-
-        TIM2_Delay(50);
     }
 }
