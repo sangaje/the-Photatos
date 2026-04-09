@@ -1,6 +1,6 @@
 #include "water_sensor.h"
 
-extern volatile uint16_t *others_raw;
+volatile uint16_t water_sensor_raw;
 
 void _DMA_Init_Water(void)
 {
@@ -53,5 +53,5 @@ void WaterSensor_Init(void) {
 
 
 int WaterSensor_Read(void) {
-    return *others_raw & 0xFFF; // 12비트 데이터 리턴
+    return water_sensor_raw & 0xFFF; // 12비트 데이터 리턴
 }
