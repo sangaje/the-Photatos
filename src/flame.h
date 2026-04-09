@@ -2,11 +2,12 @@
 
 #define SENSOR_NUM 4
 #define SAMPLING_TIME 0x7
-#define FILTER_COEFFICIENT 0.1f
+#define FILTER_COEFFICIENT 0.01f
 #define FRAMES_BASIS_BOUNDARY 150.f
 #define NUMBER_OF_SAMPLES 100
 
-#define TimerNumber 2
+#define TimerNumber 3
+
 typedef struct
 {
     volatile float x;

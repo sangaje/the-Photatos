@@ -2,6 +2,7 @@
 #include "servo.h"
 
 static volatile float servo_angle = SERVO_INIT_ANGLE;
+extern volatile unsigned char pump_auto_state;
 
 void Servo_Init(void)
 {
@@ -46,6 +47,10 @@ void Servo_Set_Angle(volatile float angle)
     servo_angle = angle;
 
     pulse = 500 + (unsigned int)((2000.0f * angle) / 180.0f);
+    if (pump_auto_state)
+    {
+        pulse /= 10;
+    }
     TIM4->CCR1 = pulse;
 }
 

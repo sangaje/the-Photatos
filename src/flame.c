@@ -242,7 +242,7 @@ void Flame_Init(int *chs)
     _DMA_Init();
     _ADC_Start();
     _Init_Directional_Component_Vector();
-    _Timer_Init(16000, 100); // 1ms마다 인터럽트 발생 (16MHz / 16000 = 1kHz -> 1ms)
+    _Timer_Init(16000, 100); // 100ms마다 인터럽트 발생 (16MHz / 16000 = 1kHz -> 100ms)
 }
 
 /**
@@ -376,6 +376,10 @@ FireVector_t fire_vector_estimation()
         sum += v[i] * v[i];
     }
     sum = sqrtf(sum);
+    if (sum == 0.0f)
+    {
+        return retv;
+    }
 
     for (int i = 0; i < SENSOR_NUM; i++)
     {
