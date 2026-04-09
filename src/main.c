@@ -5,7 +5,6 @@
 #include "pump.h"
 #include "servo.h"
 #include "stepper.h"
-#include "water_sensor.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -16,11 +15,7 @@
 #define AIM_SERVO_ACT_DEADBAND 1
 
 #define STEPPER_X_DEADBAND 8
-#define AIM_STEPPER_ACT_DEADBAND 2
 
-#define BTN_PORT GPIOC                                                    // PC
-#define BTN_PIN 13                                                        // Pin 13
-#define IS_BTN_PRESSED (Macro_Check_Bit_Set(BTN_PORT->IDR, BTN_PIN) == 0) // Press = 0
 
 static volatile float servo_angle = SERVO_INIT_ANGLE;
 static int current = 0;
