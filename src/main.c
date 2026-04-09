@@ -12,11 +12,15 @@
 #define SERVO_MIN_ANGLE 0
 #define SERVO_MAX_ANGLE 180
 #define SERVO_INIT_ANGLE 55
+#define AIM_SERVO_ACT_DEADBAND 1
+
 #define STEPPER_X_DEADBAND 8
 
 
-static int servo_angle = SERVO_INIT_ANGLE;
+static volatile float servo_angle = SERVO_INIT_ANGLE;
 static int current = 0;
+static int last_servo_cmd = SERVO_INIT_ANGLE;
+static int mode = 0; // 0: Idle, 1: Active
 static void Sys_Init(int baud)
 {
     int chs[SENSOR_NUM] = {5, 7, 8, 9};
@@ -43,7 +47,7 @@ void Main(void)
     volatile float flames[SENSOR_NUM] = {
         0.0f,
     };
-    float v[2] = {
+    volatile float v[2] = {
         0.0f,
     };
 
@@ -52,7 +56,6 @@ void Main(void)
     unsigned char pump_status = 0;      // 0: OFF, 1: ON
     unsigned char prev_btn_state = 0;   // 버튼 엣지 검출용
     unsigned char water_error_flag = 0; // 물 부족 경고 중복 실행 방지용
-    int mode = 0;
 
     printf("\n=== BASIC + FLAME MONITOR START ===\n");
 
@@ -76,21 +79,17 @@ void Main(void)
 
         if (fire_vector.intensity < 100.f)
         {
+                        /* --- stepper (pan) --- */
             int x = -(int)(fire_vector.x * 200.f);
             x = x > 50 ? 50 : (x < -50 ? -50 : x);
-            // if (mode == 0)
-            Stepper_Move_Relative(x);
-            // Stepper_Move_Relative(-(int)(fire_vector.x * 150.f));
-            int y = -(int)(fire_vector.y * 100.f);
-            // printf("Raw Y: %.4f, Mapped Y: %d\n", (fire_vector.y * 50.f), y);
-            y = y > 3 ? 3 : (y < -3 ? -3 : y);
-            servo_angle -= y;
-            servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE : ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
-            Servo_Set_Angle(servo_angle);
-            // TIM2_Delay(30);
-            if (x > STEPPER_X_DEADBAND || x < -STEPPER_X_DEADBAND)
+
+            if (x > AIM_STEPPER_ACT_DEADBAND || x < -AIM_STEPPER_ACT_DEADBAND)
             {
-                mode = 1;
+                Stepper_Move_Relative(x); // calibrating overshooting by adding a small bias
+                if (x > STEPPER_X_DEADBAND || x < -STEPPER_X_DEADBAND)
+                {
+                    mode = 1;
+                }
             }
             // printf("Stepper Move: %d steps\n", x);
             printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f ANG=%4d x=%d y=%d\n",
