@@ -316,6 +316,15 @@ Invalid_ISR:
   	.type 	__start, %function
 __start:
 
+	@ Enable FPU (CP10, CP11 Full Access) before any C code runs
+	.equ SCB_CPACR,		0xE000ED88
+	LDR		r0, =SCB_CPACR
+	LDR		r1, [r0]
+	ORR		r1, r1, #(0xF << 20)
+	STR		r1, [r0]
+	DSB
+	ISB
+
 	.equ GPIOA_LCKR,	0x4002001C @ Lock PA[14:13] for ST-LINK
 	.equ RCC_AHB1ENR,  	0x40023830 @ PA : [0] = 1, PC : [2] = 1
 
