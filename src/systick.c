@@ -1,16 +1,32 @@
 #include "device_driver.h"
 
+#define SYSTICK_RELOAD_MAX    0x00FFFFFFU
+
+static volatile unsigned int SysTick_TargetMs = 0;
+static volatile unsigned int SysTick_ElapsedMs = 0;
+
 void SysTick_Run(unsigned int msec)
 {
-	SysTick->CTRL = (0<<2)+(0<<1)+(0<<0);
-	SysTick->LOAD = (unsigned int)((HCLK/(8.*1000.))*msec+0.5);
+	unsigned int ticks_per_ms = (unsigned int)((HCLK / 8.0f) / 1000.0f + 0.5f);
+
+	if (ticks_per_ms == 0)
+		ticks_per_ms = 1;
+	if (ticks_per_ms > SYSTICK_RELOAD_MAX)
+		ticks_per_ms = SYSTICK_RELOAD_MAX;
+
+	SysTick->CTRL = 0; // Disable SysTick while configuring
+	SysTick->LOAD = ticks_per_ms - 1;
 	SysTick->VAL = 0;
-	Macro_Set_Bit(SysTick->CTRL, 0);
+
+	SysTick_TargetMs = msec;
+	SysTick_ElapsedMs = 0;
+
+	SysTick->CTRL = SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk;
 }
 
 int SysTick_Check_Timeout(void)
 {
-	return ((SysTick->CTRL >> 16) & 0x1);
+	return (SysTick_ElapsedMs >= SysTick_TargetMs) ? 1 : 0;
 }
 
 unsigned int SysTick_Get_Time(void)
@@ -25,5 +41,15 @@ unsigned int SysTick_Get_Load_Time(void)
 
 void SysTick_Stop(void)
 {
-	SysTick->CTRL = 0<<0;
+	SysTick->CTRL = 0;
+	SysTick_TargetMs = 0;
+	SysTick_ElapsedMs = 0;
+}
+
+void SysTick_Handler(void)
+{
+	if (SysTick_ElapsedMs < SysTick_TargetMs)
+	{
+		SysTick_ElapsedMs++;
+	}
 }
