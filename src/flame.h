@@ -2,9 +2,11 @@
 
 #define SENSOR_NUM 4
 #define SAMPLING_TIME 0x7
-#define FILTER_COEFFICIENT 0.5f
+#define FILTER_COEFFICIENT 0.01f
 #define FRAMES_BASIS_BOUNDARY 150.f
 #define NUMBER_OF_SAMPLES 100
+
+#define TimerNumber 3
 
 typedef struct
 {
@@ -14,5 +16,5 @@ typedef struct
 } FireVector_t;
 
 void Flame_Init(int *chs);
-void get_linearize_sensor_data(volatile float *values);
-FireVector_t fire_vector_estimation(volatile float *values);
+void _get_linearize_sensor_data(volatile float *values);
+FireVector_t fire_vector_estimation();

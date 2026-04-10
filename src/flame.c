@@ -4,9 +4,30 @@
 #include "stm32f4xx.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+// --- 1단계: 실제 글자를 붙이는 역할 (치환 안 함) ---
+#define _INNER_CAT(a, b) a##b
+#define _INNER_CAT3(a, b, c) a##b##c
+
+// --- 2단계: 인수를 값(2)으로 먼저 확장시키는 역할 (중요!) ---
+#define CAT(a, b) _INNER_CAT(a, b)
+#define CAT3(a, b, c) _INNER_CAT3(a, b, c)
+
+// --- 3단계: 실제 레지스터 별명 정의 ---
+#define TIMx CAT(TIM, TimerNumber)
+#define TIMx_IRQn CAT3(TIM, TimerNumber, _IRQn)
+#define TIMx_IRQHandler CAT3(TIM, TimerNumber, _IRQHandler)
+
+// 에러 났던 부분: 반드시 CAT3를 써야 함!
+#define RCC_TIMx_EN CAT3(RCC_APB1ENR_TIM, TimerNumber, EN)
 
 volatile uint16_t flame_sensors_raw[SENSOR_NUM] = {
     0x0,
+};
+
+volatile float flame_sensors_linearized[SENSOR_NUM] = {
+    0,
 };
 
 volatile float directional_component_vector[SENSOR_NUM][2] = {{0, 1}};
@@ -128,6 +149,42 @@ void _DMA_Init(void)
                        (1 << 10) | (1 << 8) | (1 << 0); // 맨 끝에 1(EN) 추가!
 }
 
+void _Timer_Init(uint16_t psc, uint16_t arr)
+{
+    // 1. 해당 타이머 클럭 활성화 (APB1 기준)
+    RCC->APB1ENR |= RCC_TIMx_EN;
+
+    // 2. 초기화 및 설정
+    TIMx->CR1 &= ~TIM_CR1_CEN; // 일단 정지
+    TIMx->CNT = 0;             // 카운터 초기화
+
+    TIMx->PSC = psc - 1; // 분주기 설정
+    TIMx->ARR = arr - 1; // 자동 재로드 값 설정
+
+    // 3. 인터럽트 설정
+    TIMx->DIER |= TIM_DIER_UIE; // Update Interrupt Enable
+
+    // 4. NVIC 우선순위 설정 (최우선순위 0)
+    NVIC_SetPriority(TIMx_IRQn, 0);
+    NVIC_EnableIRQ(TIMx_IRQn);
+
+    // 5. 타이머 시작
+    TIMx->CR1 |= TIM_CR1_CEN;
+}
+
+void TIMx_IRQHandler(void)
+{
+    if (TIMx->SR & 0x1) // Update interrupt
+    {
+        TIMx->SR &= ~0x1;                                                       // Clear interrupt flag
+        _get_linearize_sensor_data((volatile float *)flame_sensors_linearized); // 센서 데이터 처리
+        FireVector_t fire_vector = fire_vector_estimation();                    // 화염 벡터 계산
+        printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4.4f y=%4.4f\n",
+               flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
+               flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3], fire_vector.x, fire_vector.y, fire_vector.intensity, fire_vector.x * 70.f, -fire_vector.y * 100.f);
+    }
+}
+
 /**
  * @brief Start ADC scan conversion using software trigger.
  */
@@ -185,6 +242,7 @@ void Flame_Init(int *chs)
     _DMA_Init();
     _ADC_Start();
     _Init_Directional_Component_Vector();
+    _Timer_Init(16000, 100); // 100ms마다 인터럽트 발생 (16MHz / 16000 = 1kHz -> 100ms)
 }
 
 /**
@@ -199,6 +257,13 @@ void _init_linearize_sensor_data(volatile float *values)
     }
 }
 
+int compare_floats(const void *a, const void *b)
+{
+    float fa = *(const float *)a;
+    float fb = *(const float *)b;
+    return (fa > fb) - (fa < fb); // 양수, 음수, 또는 0 반환
+}
+
 /**
  * @brief Accumulate normalized sensor magnitudes across multiple samples.
  * @param values Output accumulation array.
@@ -206,19 +271,34 @@ void _init_linearize_sensor_data(volatile float *values)
  */
 void _sum_sensor_data(volatile float *values, int count)
 {
+    volatile float temp_values[SENSOR_NUM][NUMBER_OF_SAMPLES + 100] = {
+        0,
+    }; // 여유 공간 확보
     for (int i = 0; i < SENSOR_NUM; i++)
     {
         values[i] = 0;
     }
-    for (int _i = 0; _i < count; _i++)
+    for (int i = 0; i < count; i++)
     {
-        for (int i = 0; i < SENSOR_NUM; i++)
+        for (int j = 0; j < SENSOR_NUM; j++)
         {
-            volatile float v = (float)flame_sensors_raw[i];
+            volatile float v = (float)flame_sensors_raw[j];
             v = v < 1 ? 1.f : v;
             v = 0xffff / v - 1; // Normalize to [0, 1]
             v = sqrtf(v);
-            values[i] += v;
+            temp_values[j][i] = v;
+        }
+    }
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        qsort((void *)temp_values[i], count + 100, sizeof(float), compare_floats); // Sort each sensor's samples
+    }
+
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        for (int j = 50; j < NUMBER_OF_SAMPLES + 50; j++)
+        {
+            values[i] += temp_values[i][j];
         }
     }
 }
@@ -243,7 +323,7 @@ volatile float EMA_Filter(volatile float current_value, volatile float previous_
  * @brief Compute filtered, linearized flame sensor values with baseline compensation.
  * @param values Output array that receives processed sensor values.
  */
-void get_linearize_sensor_data(volatile float *values)
+void _get_linearize_sensor_data(volatile float *values)
 {
     static int initialized = 0;
     static volatile float linearized_values[SENSOR_NUM] = {
@@ -262,6 +342,7 @@ void get_linearize_sensor_data(volatile float *values)
     for (int i = 0; i < SENSOR_NUM; i++)
     {
         temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
+        // temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
         if (temp_values[i] > FRAMES_BASIS_BOUNDARY)
         {
             linearized_values_basis[i] = EMA_Filter(temp_values[i] - FRAMES_BASIS_BOUNDARY, linearized_values_basis[i], FILTER_COEFFICIENT);
@@ -277,7 +358,7 @@ void get_linearize_sensor_data(volatile float *values)
  * @param values Processed sensor values used for vector accumulation.
  * @return FireVector_t containing x/y direction and averaged intensity.
  */
-FireVector_t fire_vector_estimation(volatile float *values)
+FireVector_t fire_vector_estimation()
 {
     FireVector_t retv = {
         .x = 0,
@@ -291,10 +372,14 @@ FireVector_t fire_vector_estimation(volatile float *values)
     volatile float sum = 0;
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        v[i] = values[i];
+        v[i] = flame_sensors_linearized[i];
         sum += v[i] * v[i];
     }
     sum = sqrtf(sum);
+    if (sum == 0.0f)
+    {
+        return retv;
+    }
 
     for (int i = 0; i < SENSOR_NUM; i++)
     {
@@ -305,7 +390,7 @@ FireVector_t fire_vector_estimation(volatile float *values)
     {
         retv.x += directional_component_vector[i][0] * v[i];
         retv.y += directional_component_vector[i][1] * v[i];
-        retv.intensity += values[i];
+        retv.intensity += flame_sensors_linearized[i];
     }
 
     retv.y = -retv.y / SENSOR_NUM;                // 평균 방향 벡터 y

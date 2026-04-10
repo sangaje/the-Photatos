@@ -1,7 +1,7 @@
 #include "pump.h"
 #include <stdio.h>
 
-static unsigned char pump_auto_state = 0;
+volatile unsigned char pump_auto_state = 0;
 static int stable_time_count = 0;
 static int fire_off_count = 0;
 
@@ -42,8 +42,8 @@ unsigned char Pump_Is_On(void)
 
 void Pump_Control_Update(int step_x, int servo_y, float intensity, const volatile float *flames, int flame_count)
 {
-    if (flames == 0 || flame_count <= 0)
-        return;
+    // if (flames == 0 || flame_count <= 0)
+    //     return;
 
     /* -----------------------------
        pump OFF 상태일 때만 ON 조건 검사
@@ -53,11 +53,11 @@ void Pump_Control_Update(int step_x, int servo_y, float intensity, const volatil
     {
         /* 불이 어느 정도 감지되고,
            stepper/servo 움직임이 매우 작은 상태 */
-        if ((intensity < 80.0f) &&
-            (step_x >= -3 && step_x <= 3) &&
-            (servo_y >= -2 && servo_y <= 2))
+        if ((intensity < 45.0f) &&
+            (step_x >= -0.04f && step_x <= 0.04f) &&
+            (servo_y >= -0.04f && servo_y <= 0.04f))
         {
-            if (stable_time_count < 120)
+            if (stable_time_count < 200)
                 stable_time_count++;
         }
         else
@@ -81,8 +81,9 @@ void Pump_Control_Update(int step_x, int servo_y, float intensity, const volatil
        ----------------------------- */
     else
     {
+        printf("[PUMP] ON - Intensity=%.4f\n", intensity);
         /* 불이 꺼지면 intensity가 다시 커짐 */
-        if (intensity > 88.0f)
+        if (intensity > 30.0f)
         {
             if (fire_off_count < 20)
                 fire_off_count++;

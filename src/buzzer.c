@@ -12,11 +12,10 @@ void Buzzer_Init(void)
 
 void Buzzer_On(void) 
 {
-    
-    Macro_Set_Bit(BUZZER_PORT->ODR, BUZZER_PIN);                       // Set Target Pin to High
+    Macro_Clear_Bit(BUZZER_PORT->ODR, BUZZER_PIN);                     // Set Target Pin to Low
 }
 
 void Buzzer_Off(void) 
 {
-    Macro_Clear_Bit(BUZZER_PORT->ODR, BUZZER_PIN);                     // Set Target Pin to Low
+    Macro_Set_Bit(BUZZER_PORT->ODR, BUZZER_PIN);                       // Set Target Pin to High
 }

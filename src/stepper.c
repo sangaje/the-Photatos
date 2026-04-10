@@ -2,7 +2,7 @@
 #include "stepper.h"
 
 #define STEP_DELAY_MS 2
-
+extern volatile unsigned char pump_auto_state;
 static const unsigned char step_table[8][4] = {
     {1,0,0,0},
     {1,0,0,1},
@@ -62,6 +62,10 @@ static void Stepper_Step(int dir)
 void Stepper_Move_Relative(int steps)
 {
     int i;
+    if (pump_auto_state)
+    {
+        steps /= 10; // 펌프가 켜져 있을 때는 스텝 속도를 1/10로 줄임
+    }
 
     if(steps > 0)
     {
