@@ -138,12 +138,11 @@ void Main(void)
                 ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
                 Servo_Set_Angle(servo_angle+10);
             
-            Pump_Control_Update(v[0], v[1], fire_vector.intensity, flames, SENSOR_NUM);
-        }
-        else {
-            Servo_Set_Angle(55);
-        }
-
+            }
+            else {
+                Servo_Set_Angle(55);
+            }
+        Pump_Control_Update(v[0], v[1], fire_vector.intensity, flames, SENSOR_NUM);
         fire_state = Update_Fire_State(fire_state, fire_vector.intensity);
         TIM2_Delay(10);
     }
