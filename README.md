@@ -303,12 +303,10 @@ $$\theta_{n+1} = \theta_n - F_y \times 5.0, \quad \theta \in [0°,\; 180°]$$
 
 ### 화재 상태 (히스테리시스 적용)
 
-```
-                  intensity ≤ 30.0
-    ┌────────┐ ─────────────────────→ ┌────────┐
-    │  SAFE  │                        │  FIRE  │
-    │(안전)  │ ←───────────────────── │(화재)  │
-    └────────┘   intensity ≥ 40.0     └────────┘
+```mermaid
+flowchart LR
+    SAFE("SAFE\n(Safe)") -- "intensity &le; 30.0" --> FIRE("FIRE\n(Fire Detected)")
+    FIRE -- "intensity &ge; 40.0" --> SAFE
 ```
 
 | 상태 | LED | 부저 | 조건 |
@@ -473,32 +471,22 @@ RAW=[val0 val1 val2 val3] F=[f0 f1 f2 f3] V=[vx vy] SUM=intensity x=pan y=tilt
 
 ## 🔄 메인 루프 흐름
 
-```
-시스템 초기화 (96MHz, UART, LED, 부저, 펌프, 모터, ADC/DMA)
-         │
-         ▼
-   ┌──────────────┐
-   │  Self Test    │ ← 서보 55° 이동 확인
-   └──────┬───────┘
-          │
-          ▼
-   ┌──────────────────────────────┐
-   │      Main Loop (10ms)        │◄─────────────────┐
-   │                              │                   │
-   │  1. fire_vector_estimation() │  화염 벡터 계산    │
-   │     → {x, y, intensity}     │                   │
-   │                              │                   │
-   │  2. intensity < 40?          │                   │
-   │     ├─ YES:                  │                   │
-   │     │  ├─ 스테퍼 X축 제어    │                   │
-   │     │  └─ 서보 Y축 제어      │                   │
-   │     └─ NO:                   │                   │
-   │        └─ 서보 55° 복귀      │                   │
-   │                              │                   │
-   │  3. Pump_Control_Update()    │  펌프 자동 제어    │
-   │  4. Update_Fire_State()      │  LED/부저 상태     │
-   │  5. TIM2_Delay(10ms)        │                   │
-   └──────────────────────────────┘───────────────────┘
+```mermaid
+flowchart TD
+    INIT["System Init\n96MHz, UART, LED, Buzzer,\nPump, Motor, ADC/DMA"] --> SELF["Self Test\nServo → 55°"]
+    SELF --> S1
+
+    subgraph LOOP["Main Loop — 10ms cycle"]
+        direction TB
+        S1["1. fire_vector_estimation()\n→ x, y, intensity"]
+        S1 --> S2{"intensity < 40 ?"}
+        S2 -->|YES| CTRL["Stepper X-axis control\nServo Y-axis control"]
+        S2 -->|NO| HOME["Servo → 55°"]
+        CTRL --> S3["3. Pump_Control_Update()\n4. Update_Fire_State()\n5. TIM2_Delay 10ms"]
+        HOME --> S3
+    end
+
+    S3 -->|"repeat"| S1
 ```
 
 ---
