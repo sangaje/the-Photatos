@@ -42,37 +42,22 @@
 
 ## 🏗 시스템 아키텍처
 
-```
-                    ┌─────────────────────────────┐
-                    │        STM32F411xE           │
-                    │      (ARM Cortex-M4)         │
-                    │        96 MHz                │
-                    ├─────────────────────────────┤
-                    │                             │
-   IR 화염 센서 x4 ─┤  ADC1 (DMA2 Circular)      │
-   (PC5,PC7,PC8,PC9)│  → flame_sensors_raw[4]     │
-                    │  → 신호 처리 파이프라인       │
-                    │  → FireVector_t {x, y, I}   │
-                    │                             │
-                    │  TIM3 IRQ (100ms 주기)       │──→ UART2 텔레메트리 출력
-                    │  → 센서 데이터 처리           │    (PA2/PA3, 115200 baud)
-                    │  → 화염 벡터 계산             │
-                    │                             │
-                    │  Main Loop (10ms 주기)       │
-                    │  ├─ 스테퍼 제어 (X축)        │──→ 스테퍼 모터 (PA0,PA1,PA4,PA6)
-                    │  ├─ 서보 제어 (Y축)          │──→ 서보 모터 (PB6, TIM4 CH1 PWM)
-                    │  ├─ 펌프 상태 업데이트        │──→ 워터 펌프 릴레이 (PC4)
-                    │  └─ 화재 상태 머신            │──→ LED (PC0,PC1) + 부저 (PC2)
-                    └─────────────────────────────┘
-                              │
-                              │ UART2 (115200)
-                              ▼
-                    ┌─────────────────────────────┐
-                    │   PC (live_monitor.py)       │
-                    │   matplotlib 실시간 대시보드  │
-                    │   ├─ 화염 방향 화살표         │
-                    │   └─ 센서별 강도 바 차트      │
-                    └─────────────────────────────┘
+```mermaid
+flowchart TB
+    IR["IR Flame Sensor x4\nPC5 PC7 PC8 PC9"] --> ADC
+
+    subgraph MCU["STM32F411xE - Cortex-M4 96MHz"]
+        ADC["ADC1 + DMA2\nCircular Mode"]
+        ADC --> FV["FireVector_t\nx y intensity"]
+        FV --> TIM3["TIM3 IRQ\n100ms Telemetry"]
+        FV --> MAIN["Main Loop\n10ms Cycle"]
+    end
+
+    TIM3 -- "UART2\n115200baud" --> PC["PC\nlive_monitor.py"]
+    MAIN --> STEP["Stepper Motor\nHorizontal Pan"]
+    MAIN --> SERVO["Servo Motor\nVertical Tilt"]
+    MAIN --> PUMP["Water Pump\nRelay Control"]
+    MAIN --> LEDBUZ["LED + Buzzer\nStatus Alert"]
 ```
 
 ---
@@ -304,9 +289,12 @@ $$\theta_{n+1} = \theta_n - F_y \times 5.0, \quad \theta \in [0°,\; 180°]$$
 ### 화재 상태 (히스테리시스 적용)
 
 ```mermaid
-flowchart LR
-    SAFE("SAFE\n(Safe)") -- "intensity &le; 30.0" --> FIRE("FIRE\n(Fire Detected)")
-    FIRE -- "intensity &ge; 40.0" --> SAFE
+stateDiagram-v2
+    SAFE : SAFE - Green LED ON
+    FIRE : FIRE - Red LED + Buzzer ON
+
+    SAFE --> FIRE : intensity drops below 30
+    FIRE --> SAFE : intensity rises above 40
 ```
 
 | 상태 | LED | 부저 | 조건 |
@@ -317,20 +305,22 @@ flowchart LR
 
 ### 워터 펌프 자동 제어
 
-```
-[펌프 OFF 상태]
-    │
-    ├─ 안정 조건 충족? (intensity < 40 AND |step_x| < 0.04 AND |servo_y| < 0.04)
-    │   ├─ YES → 5초 타이머 시작
-    │   │         └─ 5초 경과 → 🟢 펌프 ON
-    │   └─ NO  → 타이머 리셋
-    │
-[펌프 ON 상태]
-    │
-    ├─ 화염 소멸? (intensity > 30)
-    │   ├─ YES → 2초 타이머 시작
-    │   │         └─ 2초 경과 → 🔴 펌프 OFF
-    │   └─ NO  → 타이머 리셋 (계속 분사)
+```mermaid
+flowchart TD
+    OFF(["Pump OFF"]) --> CHECK
+    CHECK{"Aiming\nstable?"}
+    CHECK -- "YES" --> WAIT5["Wait 5 seconds"]
+    CHECK -- "NO" --> RESET1["Reset timer"]
+    RESET1 --> OFF
+    WAIT5 --> DONE5{"5s\npassed?"}
+    DONE5 -- "Not yet" --> CHECK
+    DONE5 -- "YES" --> ON(["Pump ON"])
+    ON --> EXTINGUISH{"Fire gone?\nintensity > 30"}
+    EXTINGUISH -- "NO, keep spraying" --> ON
+    EXTINGUISH -- "YES" --> WAIT2["Wait 2 seconds"]
+    WAIT2 --> DONE2{"2s\npassed?"}
+    DONE2 -- "Not yet" --> EXTINGUISH
+    DONE2 -- "YES" --> OFF
 ```
 
 **안정화 조건:**
@@ -473,20 +463,20 @@ RAW=[val0 val1 val2 val3] F=[f0 f1 f2 f3] V=[vx vy] SUM=intensity x=pan y=tilt
 
 ```mermaid
 flowchart TD
-    INIT["System Init\n96MHz, UART, LED, Buzzer,\nPump, Motor, ADC/DMA"] --> SELF["Self Test\nServo → 55°"]
+    INIT["System Init\n96MHz UART LED\nBuzzer Pump Motor ADC"] --> SELF["Self Test\nServo moves to 55 degrees"]
     SELF --> S1
 
-    subgraph LOOP["Main Loop — 10ms cycle"]
+    subgraph LOOP["Main Loop - repeats every 10ms"]
         direction TB
-        S1["1. fire_vector_estimation()\n→ x, y, intensity"]
-        S1 --> S2{"intensity < 40 ?"}
-        S2 -->|YES| CTRL["Stepper X-axis control\nServo Y-axis control"]
-        S2 -->|NO| HOME["Servo → 55°"]
-        CTRL --> S3["3. Pump_Control_Update()\n4. Update_Fire_State()\n5. TIM2_Delay 10ms"]
+        S1["Estimate fire direction\nfire_vector_estimation"]
+        S1 --> S2{"Fire detected?\nintensity below 40"}
+        S2 -- "YES" --> CTRL["Aim at fire\nStepper horizontal\nServo vertical"]
+        S2 -- "NO" --> HOME["Return to home\nServo back to 55 degrees"]
+        CTRL --> S3["Update pump state\nUpdate fire alert\nWait 10ms"]
         HOME --> S3
     end
 
-    S3 -->|"repeat"| S1
+    S3 --> S1
 ```
 
 ---
