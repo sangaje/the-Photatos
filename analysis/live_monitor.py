@@ -8,7 +8,7 @@ import matplotlib.animation as animation
 import serial
 
 # ──── 설정 ────
-COM_PORT = "COM10"       # 맞는 포트로 변경
+COM_PORT = "COM3"       # 맞는 포트로 변경
 BAUD = 115200
 SENSOR_NUM = 4
 
@@ -52,6 +52,11 @@ except serial.SerialException as e:
 
 print(f"Opened {COM_PORT} @ {BAUD} baud. Waiting for data...")
 
+# ──── 데이터 파일 저장 ────
+DATA_FILE = "data.txt"
+data_file = open(DATA_FILE, "w", encoding="utf-8")
+print(f"Logging to {DATA_FILE}")
+
 # ──── 최신 파싱 결과 저장 ────
 latest = {"f": np.zeros(SENSOR_NUM), "vx": 0.0, "vy": 0.0, "ang": 0.0, "x": 0.0, "y": 0.0, "sum": 0.0}
 _serial_buf = ""  # 줄바꿈으로 잘린 데이터 버퍼
@@ -87,10 +92,13 @@ def read_serial():
         latest["vx"] = vx
         latest["vy"] = vy
         latest["ang"] = float(last_match.group("ang") or 0.0)
-        latest["x"] = float(last_match.group("x") or 0.0)
+        latest["x"] = int(float(last_match.group("x") or 0.0))
         latest["y"] = float(last_match.group("y") or 0.0)
         latest["sum"] = float(last_match.group("sum") or 0.0)
-        print(f"\rF={f_vals} vx={vx:.4f} vy={vy:.4f} ang={latest['ang']:.2f}° x={latest['x']:.4f} y={latest['y']:.4f} sum={latest['sum']:.2f}", end="", flush=True)
+        # 콘솔 출력 + 파일 저장
+        print(joined)
+        data_file.write(joined + "\n")
+        data_file.flush()
 
 # ──── 그래프 세팅 ────
 fig, (ax_arrow, ax_bar) = plt.subplots(
@@ -139,7 +147,7 @@ def update(frame_idx):
             "", xy=(ux * arrow_len, uy * arrow_len), xytext=(0, 0),
             arrowprops=dict(arrowstyle="->", color="red", lw=3),
         )
-        ax_arrow.text(0, -1.35, f"mag={mag:.4f} | ANG={latest['ang']:.2f}° | x={latest['x']:.4f} | y={latest['y']:.4f} | SUM={latest['sum']:.2f}", ha="center", fontsize=9, color="red")
+        ax_arrow.text(0, -1.35, f"mag={mag:.4f} | ANG={latest['ang']:.2f}° | x={latest['x']:.0f} | y={latest['y']:.4f} | SUM={latest['sum']:.2f}", ha="center", fontsize=9, color="red")
     else:
         ax_arrow.plot(0, 0, "x", color="red", markersize=12, mew=2)
 
@@ -157,4 +165,6 @@ ani = animation.FuncAnimation(fig, update, interval=50, cache_frame_data=False)
 plt.tight_layout()
 plt.show()
 
+data_file.close()
+print(f"Data saved to {DATA_FILE}")
 ser.close()
