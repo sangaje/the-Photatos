@@ -32,6 +32,10 @@ volatile float flame_sensors_linearized[SENSOR_NUM] = {
 
 volatile float directional_component_vector[SENSOR_NUM][2] = {{0, 1}};
 
+extern int x;
+extern volatile float y;
+extern volatile float servo_angle;
+
 /**
  * @brief Initialize ADC peripheral global configuration for multi-channel sampling.
  */
@@ -179,9 +183,9 @@ void TIMx_IRQHandler(void)
         TIMx->SR &= ~0x1;                                                       // Clear interrupt flag
         _get_linearize_sensor_data((volatile float *)flame_sensors_linearized); // 센서 데이터 처리
         FireVector_t fire_vector = fire_vector_estimation();                    // 화염 벡터 계산
-        printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4.4f y=%4.4f\n",
+        printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4d y=%4.4f ANG=%4.4f\n",
                flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
-               flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3], fire_vector.x, fire_vector.y, fire_vector.intensity, fire_vector.x * 70.f, -fire_vector.y * 100.f);
+               flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3], fire_vector.x, fire_vector.y, fire_vector.intensity, x, y, servo_angle);
     }
 }
 
