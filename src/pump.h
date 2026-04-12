@@ -10,7 +10,7 @@
 
 /* --- Pump Control Tuning --- */
 #define PUMP_INTENSITY_LOW      100.0f  // intensity 이하일 때 안정 판정
-#define PUMP_VECTOR_DEADBAND    0.06f   // V.x, V.y 안정 판정 범위
+#define PUMP_VECTOR_DEADBAND    0.05f   // V.x, V.y 안정 판정 범위
 #define PUMP_STABLE_DELAY_MS    1000    // 안정 후 펌프 ON까지 대기 (ms)
 #define PUMP_INTENSITY_HIGH     60.0f   // intensity 이상이면 OFF 판정
 #define PUMP_OFF_DELAY_MS       500     // 고강도 지속 후 OFF까지 대기 (ms)
