@@ -24,7 +24,62 @@ static int mode = 0; // 0: Idle, 1: Active
 volatile float y = 0.0f;
 int x = 0;
 
-FireState fire_state = STATE_SAFE; // 초기 상태는 안전
+FireState fire_state = STATE_SAFE;
+
+#define MOTOR_TIMER_PSC  16000  // 16MHz / 16000 = 1kHz
+#define MOTOR_TIMER_ARR  50     // 1kHz / 50 = 20Hz = 50ms
+
+/* TIM5 ISR: 50ms 주기로 서보/스템 구동 */
+void TIM5_IRQHandler(void)
+{
+    if (!(TIM5->SR & TIM_SR_UIF))
+        return;
+    TIM5->SR &= ~TIM_SR_UIF;
+
+    volatile float vx = latest_fire_vector.x;
+    volatile float vy = latest_fire_vector.y;
+    volatile float intensity = latest_fire_vector.intensity;
+
+    if (intensity < 100.f)
+    {
+        /* --- stepper (pan) --- */
+        x = -(int)(vx * 200.f);
+        if (x > AIM_STEPPER_ACT_DEADBAND || x < -AIM_STEPPER_ACT_DEADBAND)
+        {
+            Stepper_Move_Relative(x + 5);
+            if (x > STEPPER_X_DEADBAND || x < -STEPPER_X_DEADBAND)
+                mode = 1;
+        }
+        else
+        {
+            x = 0;
+        }
+
+        /* --- servo (tilt) --- */
+        y = vy * 10.f;
+        y = y > 0.5f ? 1.0f : (y < -0.5f ? -1.0f : y);
+        servo_angle -= y;
+        Servo_Set_Angle(servo_angle);
+    }
+    else
+    {
+        Servo_Set_Angle(SERVO_INIT_ANGLE);
+        servo_angle = SERVO_INIT_ANGLE;
+    }
+}
+
+static void Motor_Timer_Init(void)
+{
+    RCC->APB1ENR |= RCC_APB1ENR_TIM5EN;
+    TIM5->CR1 &= ~TIM_CR1_CEN;
+    TIM5->CNT = 0;
+    TIM5->PSC = MOTOR_TIMER_PSC - 1;
+    TIM5->ARR = MOTOR_TIMER_ARR - 1;
+    TIM5->DIER |= TIM_DIER_UIE;
+    NVIC_SetPriority(TIM5_IRQn, 2);  // 센서(TIM3)=0 보다 낮은 우선순위
+    NVIC_EnableIRQ(TIM5_IRQn);
+    TIM5->CR1 |= TIM_CR1_CEN;
+}
 
 static void Uart2_Send_Hex(uint32_t value)
 {
@@ -73,80 +128,33 @@ static void Sys_Init(int baud)
     Servo_Init();
     Servo_Set_Angle(SERVO_INIT_ANGLE);
 
-    /* flame 3채널 초기화 */
+    /* flame 센서 초기화 */
     Flame_Init(chs);
+
+    /* 모터 제어 타이머 (TIM5, 50ms) */
+    Motor_Timer_Init();
 
     // 리셋 원인 확인
     Check_Reset_Reason();
 }
 void Main(void)
 {
-    volatile float flames[SENSOR_NUM] = {
-        0.0f,
-    };
-    volatile float v[2] = {
-        0.0f,
-    };
+    volatile float flames[SENSOR_NUM] = {0.0f};
 
     Sys_Init(115200);
 
-    unsigned char pump_status = 0;      // 0: OFF, 1: ON
-    unsigned char prev_btn_state = 0;   // 버튼 엣지 검출용
-    unsigned char water_error_flag = 0; // 물 부족 경고 중복 실행 방지용
-
-    printf("\n=== BASIC + FLAME MONITOR START ===\n");
-
-    printf("SELF TEST: STEPPER + SERVO\n");
-    Servo_Set_Angle(55);
+    printf("\n=== FLAME MONITOR START ===\n");
+    Servo_Set_Angle(SERVO_INIT_ANGLE);
     TIM2_Delay(800);
-
-    printf("SELF TEST DONE\n");
 
     while (1)
     {
-        FireVector_t fire_vector = fire_vector_estimation();
+        volatile float vx = latest_fire_vector.x;
+        volatile float vy = latest_fire_vector.y;
+        volatile float intensity = latest_fire_vector.intensity;
 
-        v[0] = fire_vector.x;
-        v[1] = fire_vector.y;
-        extern uint16_t flame_sensors_raw[SENSOR_NUM];
-
-        // Servo_Set_Angle(90);
-        
-        if (fire_vector.intensity < 40.f)
-        {
-            /* --- stepper (pan) --- */
-            x = -(int)(fire_vector.x * 200.f);
-            
-            if (x > AIM_STEPPER_ACT_DEADBAND || x < -AIM_STEPPER_ACT_DEADBAND)
-            {
-                Stepper_Move_Relative(x + 5); // calibrating overshooting by adding a small bias
-                if (x > STEPPER_X_DEADBAND || x < -STEPPER_X_DEADBAND)
-                {
-                    mode = 1;
-                }
-            }
-            else
-            {
-                x = 0;  /* for the printf */
-            }
-            
-            /* --- servo (tilt) --- */
-            y = (fire_vector.y * 10.f);
-            y = y > 0.5 ? 1 : (y < -0.5 ? -1 : y);
-            
-            servo_angle -= y;
-            // servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE :
-            // ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
-            Servo_Set_Angle(servo_angle);
-            
-            }
-            else {
-                Servo_Set_Angle(55);
-                servo_angle = 55;
-            }
-            
-        Pump_Control_Update(v[0], v[1], fire_vector.intensity, flames, SENSOR_NUM);
-        fire_state = Update_Fire_State(fire_state, fire_vector.intensity);
+        Pump_Control_Update(vx, vy, intensity, flames, SENSOR_NUM);
+        fire_state = Update_Fire_State(fire_state, intensity);
         TIM2_Delay(50);
     }
 }
