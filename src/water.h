@@ -7,8 +7,8 @@
 //  intensity >= SAFE_THRESHOLD : 안전 (화재 진압 완료)
 //  FIRE_THRESHOLD < intensity < SAFE_THRESHOLD : 히스테리시스 구간 (이전 상태 유지)
 // ─────────────────────────────────────────
-#define FIRE_THRESHOLD      30.0f
-#define SAFE_THRESHOLD      35.0f
+#define FIRE_THRESHOLD      100.0f
+#define SAFE_THRESHOLD      80.0f
 
 // ─────────────────────────────────────────
 //  화재 상태 열거형

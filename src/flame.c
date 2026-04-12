@@ -176,16 +176,21 @@ void _Timer_Init(uint16_t psc, uint16_t arr)
     TIMx->CR1 |= TIM_CR1_CEN;
 }
 
+volatile FireVector_t latest_fire_vector = {0, 0, 0};
+
 void TIMx_IRQHandler(void)
 {
     if (TIMx->SR & 0x1) // Update interrupt
     {
-        TIMx->SR &= ~0x1;                                                       // Clear interrupt flag
-        _get_linearize_sensor_data((volatile float *)flame_sensors_linearized); // 센서 데이터 처리
-        FireVector_t fire_vector = fire_vector_estimation();                    // 화염 벡터 계산
+        TIMx->SR &= ~0x1;
+        volatile float raw_linearized[SENSOR_NUM];
+        _get_linearize_sensor_data(raw_linearized);
+        Kalman_Filter(raw_linearized, (volatile float *)flame_sensors_linearized);
+        latest_fire_vector = fire_vector_estimation();
         printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4d y=%4.4f ANG=%4.4f\n",
                flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
-               flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3], fire_vector.x, fire_vector.y, fire_vector.intensity, x, y, servo_angle);
+               flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3],
+               latest_fire_vector.x, latest_fire_vector.y, latest_fire_vector.intensity, x, y, servo_angle);
     }
 }
 
@@ -255,79 +260,79 @@ void Flame_Init(int *chs)
     _Timer_Init(16000, 100); // 100ms마다 인터럽트 발생 (16MHz / 16000 = 1kHz -> 100ms)
 }
 
-/**
- * @brief Initialize linearized sensor output array with boundary baseline values.
- * @param values Output array to initialize.
- */
-void _init_linearize_sensor_data(volatile float *values)
-{
-    for (int i = 0; i < SENSOR_NUM; i++)
-    {
-        values[i] = FRAMES_BASIS_BOUNDARY;
-    }
-}
+// /**
+//  * @brief Initialize linearized sensor output array with boundary baseline values.
+//  * @param values Output array to initialize.
+//  */
+// void _init_linearize_sensor_data(volatile float *values)
+// {
+//     for (int i = 0; i < SENSOR_NUM; i++)
+//     {
+//         values[i] = FRAMES_BASIS_BOUNDARY;
+//     }
+// }
 
-int compare_floats(const void *a, const void *b)
-{
-    float fa = *(const float *)a;
-    float fb = *(const float *)b;
-    return (fa > fb) - (fa < fb); // 양수, 음수, 또는 0 반환
-}
+// int compare_floats(const void *a, const void *b)
+// {
+//     float fa = *(const float *)a;
+//     float fb = *(const float *)b;
+//     return (fa > fb) - (fa < fb); // 양수, 음수, 또는 0 반환
+// }
 
-/**
- * @brief Accumulate normalized sensor magnitudes across multiple samples.
- * @param values Output accumulation array.
- * @param count Number of samples to accumulate.
- */
-void _sum_sensor_data(volatile float *values, int count)
-{
-    volatile float temp_values[SENSOR_NUM][NUMBER_OF_SAMPLES + 100] = {
-        0,
-    }; // 여유 공간 확보
-    for (int i = 0; i < SENSOR_NUM; i++)
-    {
-        values[i] = 0;
-    }
-    for (int i = 0; i < count; i++)
-    {
-        for (int j = 0; j < SENSOR_NUM; j++)
-        {
-            volatile float v = (float)flame_sensors_raw[j];
-            v = v < 1 ? 1.f : v;
-            v = 0xffff / v - 1; // Normalize to [0, 1]
-            v = sqrtf(v);
-            temp_values[j][i] = v;
-        }
-    }
-    for (int i = 0; i < SENSOR_NUM; i++)
-    {
-        qsort((void *)temp_values[i], count + 100, sizeof(float), compare_floats); // Sort each sensor's samples
-    }
+// /**
+//  * @brief Accumulate normalized sensor magnitudes across multiple samples.
+//  * @param values Output accumulation array.
+//  * @param count Number of samples to accumulate.
+//  */
+// void _sum_sensor_data(volatile float *values, int count)
+// {
+//     volatile float temp_values[SENSOR_NUM][NUMBER_OF_SAMPLES + 100] = {
+//         0,
+//     }; // 여유 공간 확보
+//     for (int i = 0; i < SENSOR_NUM; i++)
+//     {
+//         values[i] = 0;
+//     }
+//     for (int i = 0; i < count; i++)
+//     {
+//         for (int j = 0; j < SENSOR_NUM; j++)
+//         {
+//             volatile float v = (float)flame_sensors_raw[j];
+//             v = v < 1 ? 1.f : v;
+//             v = 0xffff / v - 1; // Normalize to [0, 1]
+//             v = sqrtf(v);
+//             temp_values[j][i] = v;
+//         }
+//     }
+//     for (int i = 0; i < SENSOR_NUM; i++)
+//     {
+//         qsort((void *)temp_values[i], count + 100, sizeof(float), compare_floats); // Sort each sensor's samples
+//     }
+// 
+//     for (int i = 0; i < SENSOR_NUM; i++)
+//     {
+//         for (int j = 50; j < NUMBER_OF_SAMPLES + 50; j++)
+//         {
+//             values[i] += temp_values[i][j];
+//         }
+//     }
+// }
 
-    for (int i = 0; i < SENSOR_NUM; i++)
-    {
-        for (int j = 50; j < NUMBER_OF_SAMPLES + 50; j++)
-        {
-            values[i] += temp_values[i][j];
-        }
-    }
-}
-
-/**
- * @brief Compute the exponential moving average for a single sample.
- * @param current_value Current measurement value.
- * @param previous_ema Previous EMA result.
- * @param alpha EMA smoothing factor in the range [0, 1].
- * @return Updated EMA value.
- * @example
- * @code
- * float ema = EMA_Filter(12.0f, 10.0f, 0.2f);
- * @endcode
- */
-volatile float EMA_Filter(volatile float current_value, volatile float previous_ema, volatile float alpha)
-{
-    return alpha * current_value + (1 - alpha) * previous_ema;
-}
+// /**
+//  * @brief Compute the exponential moving average for a single sample.
+//  * @param current_value Current measurement value.
+//  * @param previous_ema Previous EMA result.
+//  * @param alpha EMA smoothing factor in the range [0, 1].
+//  * @return Updated EMA value.
+//  * @example
+//  * @code
+//  * float ema = EMA_Filter(12.0f, 10.0f, 0.2f);
+//  * @endcode
+//  */
+// volatile float EMA_Filter(volatile float current_value, volatile float previous_ema, volatile float alpha)
+// {
+//     return alpha * current_value + (1 - alpha) * previous_ema;
+// }
 
 /**
  * @brief Compute filtered, linearized flame sensor values with baseline compensation.
@@ -335,33 +340,247 @@ volatile float EMA_Filter(volatile float current_value, volatile float previous_
  */
 void _get_linearize_sensor_data(volatile float *values)
 {
-    static int initialized = 0;
-    static volatile float linearized_values[SENSOR_NUM] = {
-        0,
-    };
-    static volatile float linearized_values_basis[SENSOR_NUM] = {
-        0,
-    };
-    volatile float temp_values[SENSOR_NUM];
-    if (!initialized)
-    {
-        _init_linearize_sensor_data((volatile float *)linearized_values);
-        initialized = 1;
-    }
-    _sum_sensor_data((volatile float *)temp_values, NUMBER_OF_SAMPLES);
     for (int i = 0; i < SENSOR_NUM; i++)
     {
-        temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
-        // temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
-        if (temp_values[i] > FRAMES_BASIS_BOUNDARY)
-        {
-            linearized_values_basis[i] = EMA_Filter(temp_values[i] - FRAMES_BASIS_BOUNDARY, linearized_values_basis[i], FILTER_COEFFICIENT);
-        }
-        linearized_values[i] = EMA_Filter(temp_values[i], linearized_values[i], FILTER_COEFFICIENT); // Simple low-pass filter
-        values[i] = linearized_values[i] - linearized_values_basis[i];
-        // printf("RAW[%d]=%010.u LIN=%.4f BAS=%.4f OUT=%.4f\n", i, flame_sensors_raw[i], linearized_values[i], linearized_values_basis[i], values[i]);
+        volatile float v = (float)flame_sensors_raw[i];
+        v = v < 1 ? 1.f : v;
+        v = 0xffff / v - 1;
+        v = sqrtf(v);
+        values[i] = v;
     }
 }
+
+/* ================================================================
+ *  4x4 행렬 연산 (칼만 필터 전용)
+ * ================================================================ */
+#define N SENSOR_NUM
+
+// C = A + B
+static void mat_add(float C[N][N], const float A[N][N], const float B[N][N])
+{
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            C[i][j] = A[i][j] + B[i][j];
+}
+
+// C = A - B
+static void mat_sub(float C[N][N], const float A[N][N], const float B[N][N])
+{
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            C[i][j] = A[i][j] - B[i][j];
+}
+
+// C = A * B
+static void mat_mul(float C[N][N], const float A[N][N], const float B[N][N])
+{
+    float tmp[N][N];
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+        {
+            tmp[i][j] = 0;
+            for (int k = 0; k < N; k++)
+                tmp[i][j] += A[i][k] * B[k][j];
+        }
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            C[i][j] = tmp[i][j];
+}
+
+// dst = I (단위 행렬)
+static void mat_identity(float dst[N][N])
+{
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            dst[i][j] = (i == j) ? 1.0f : 0.0f;
+}
+
+// Gauss-Jordan 방식 4x4 역행렬: inv = src^(-1), 성공 시 1 반환
+static int mat_inv(float inv[N][N], const float src[N][N])
+{
+    float aug[N][2 * N];
+    // [src | I] 확장 행렬 구성
+    for (int i = 0; i < N; i++)
+    {
+        for (int j = 0; j < N; j++)
+        {
+            aug[i][j] = src[i][j];
+            aug[i][j + N] = (i == j) ? 1.0f : 0.0f;
+        }
+    }
+    // 전방 소거 + 피벗
+    for (int col = 0; col < N; col++)
+    {
+        // 최대 피벗 탐색
+        int max_row = col;
+        float max_val = fabsf(aug[col][col]);
+        for (int row = col + 1; row < N; row++)
+        {
+            float v = fabsf(aug[row][col]);
+            if (v > max_val) { max_val = v; max_row = row; }
+        }
+        if (max_val < 1e-12f) return 0; // 특이 행렬
+        // 행 교환
+        if (max_row != col)
+        {
+            for (int j = 0; j < 2 * N; j++)
+            {
+                float tmp = aug[col][j];
+                aug[col][j] = aug[max_row][j];
+                aug[max_row][j] = tmp;
+            }
+        }
+        // 피벗 행 정규화
+        float pivot = aug[col][col];
+        for (int j = 0; j < 2 * N; j++)
+            aug[col][j] /= pivot;
+        // 소거
+        for (int row = 0; row < N; row++)
+        {
+            if (row == col) continue;
+            float factor = aug[row][col];
+            for (int j = 0; j < 2 * N; j++)
+                aug[row][j] -= factor * aug[col][j];
+        }
+    }
+    // 결과 추출
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            inv[i][j] = aug[i][j + N];
+    return 1;
+}
+
+/* ================================================================
+ *  칼만 필터 (4-state, 측정 = 상태)
+ *
+ *  상태: x[4] = F 센서 값
+ *  예측: x_pred = x_prev  (등속 모델, B*u = 0)
+ *  측정: z[4]  = raw 변환 센서 값
+ *
+ *  P = P + Q        (불확실성 증가)
+ *  K = P (P + R)^-1 (칼만 이득)
+ *  x = x + K(z - x) (상태 업데이트)
+ *  P = (I - K) P    (불확실성 감소)
+ * ================================================================ */
+static float kf_x[N];          // 상태 추정치
+static float kf_P[N][N];       // 오차 공분산
+static float kf_R[N][N];       // 측정 노이즈 공분산
+static float kf_Q[N][N];       // 프로세스 노이즈 공분산
+static int   kf_initialized = 0;
+
+static void Kalman_Init(const volatile float *z_init)
+{
+    // R 초기화
+    float R_init[N][N] = KALMAN_R;
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            kf_R[i][j] = R_init[i][j];
+
+    // Q 초기화 (대각)
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            kf_Q[i][j] = (i == j) ? KALMAN_Q_DIAG : 0.0f;
+
+    // P 초기화 (대각, 큰 값 = 초기 불확실성 높음)
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            kf_P[i][j] = (i == j) ? KALMAN_P_INIT : 0.0f;
+
+    // 상태를 첫 측정치로 초기화
+    for (int i = 0; i < N; i++)
+        kf_x[i] = z_init[i];
+
+    kf_initialized = 1;
+}
+
+void Kalman_Filter(volatile float *z, volatile float *x_out)
+{
+    if (!kf_initialized)
+    {
+        Kalman_Init(z);
+        for (int i = 0; i < N; i++)
+            x_out[i] = kf_x[i];
+        return;
+    }
+
+    /* 1. 예측 단계: x_pred = x (등속 모델, B*u = 0) */
+    //    상태 변화 없음, kf_x 유지
+
+    /* 2. 불확실성 예측: P = P + Q */
+    float P_pred[N][N];
+    mat_add(P_pred, kf_P, kf_Q);
+
+    /* 3. 칼만 이득: K = P_pred * (P_pred + R)^(-1) */
+    float S[N][N];          // S = P_pred + R
+    mat_add(S, P_pred, kf_R);
+
+    float S_inv[N][N];
+    if (!mat_inv(S_inv, S))
+    {
+        // 역행렬 실패 시 측정치 그대로 사용
+        for (int i = 0; i < N; i++)
+            x_out[i] = z[i];
+        return;
+    }
+
+    float K[N][N];          // K = P_pred * S_inv
+    mat_mul(K, P_pred, S_inv);
+
+    /* 4. 상태 업데이트: x = x + K * (z - x) */
+    float innovation[N];    // z - x_pred
+    for (int i = 0; i < N; i++)
+        innovation[i] = z[i] - kf_x[i];
+
+    for (int i = 0; i < N; i++)
+    {
+        float correction = 0;
+        for (int j = 0; j < N; j++)
+            correction += K[i][j] * innovation[j];
+        kf_x[i] += correction;
+    }
+
+    /* 5. 오차 공분산 업데이트: P = (I - K) * P_pred */
+    float I_mat[N][N];
+    mat_identity(I_mat);
+
+    float IK[N][N];         // I - K
+    mat_sub(IK, I_mat, K);
+
+    mat_mul(kf_P, IK, P_pred);
+
+    // 출력
+    for (int i = 0; i < N; i++)
+        x_out[i] = kf_x[i];
+}
+
+// /* 원본 _get_linearize_sensor_data (중앙값 + EMA 버전) */
+// void _get_linearize_sensor_data(volatile float *values)
+// {
+//     static int initialized = 0;
+//     static volatile float linearized_values[SENSOR_NUM] = {
+//         0,
+//     };
+//     static volatile float linearized_values_basis[SENSOR_NUM] = {
+//         0,
+//     };
+//     volatile float temp_values[SENSOR_NUM];
+//     if (!initialized)
+//     {
+//         _init_linearize_sensor_data((volatile float *)linearized_values);
+//         initialized = 1;
+//     }
+//     _sum_sensor_data((volatile float *)temp_values, NUMBER_OF_SAMPLES);
+//     for (int i = 0; i < SENSOR_NUM; i++)
+//     {
+//         temp_values[i] = temp_values[i] / NUMBER_OF_SAMPLES;
+//         if (temp_values[i] > FRAMES_BASIS_BOUNDARY)
+//         {
+//             linearized_values_basis[i] = EMA_Filter(temp_values[i] - FRAMES_BASIS_BOUNDARY, linearized_values_basis[i], FILTER_COEFFICIENT);
+//         }
+//         linearized_values[i] = EMA_Filter(temp_values[i], linearized_values[i], FILTER_COEFFICIENT);
+//         values[i] = linearized_values[i] - linearized_values_basis[i];
+//     }
+// }
 
 /**
  * @brief Estimate the fire direction vector and average intensity from sensor values.
