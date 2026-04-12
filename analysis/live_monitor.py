@@ -1,16 +1,22 @@
 import re
 import sys
+import io
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import serial
+from PIL import Image
+from datetime import datetime
 
 # ──── 설정 ────
 COM_PORT = "COM3"       # 맞는 포트로 변경
 BAUD = 115200
 SENSOR_NUM = 4
+SAVE_GIF = True         # GIF 저장 여부
+GIF_FPS = 20            # GIF 프레임 레이트
+MAX_GIF_FRAMES = 600    # 최대 프레임 수 (600 = 약 30초 @ 20fps)
 
 # 센서 방향 벡터 (반시계 방향, S0 = 12시 = (0,1))
 angle_inc = 2 * np.pi / SENSOR_NUM
@@ -56,6 +62,9 @@ print(f"Opened {COM_PORT} @ {BAUD} baud. Waiting for data...")
 DATA_FILE = "data.txt"
 data_file = open(DATA_FILE, "w", encoding="utf-8")
 print(f"Logging to {DATA_FILE}")
+
+# ──── GIF 프레임 저장 ────
+gif_frames = []
 
 # ──── 최신 파싱 결과 저장 ────
 latest = {"f": np.zeros(SENSOR_NUM), "vx": 0.0, "vy": 0.0, "ang": 0.0, "x": 0.0, "y": 0.0, "sum": 0.0}
@@ -161,9 +170,32 @@ def update(frame_idx):
     ax_bar.set_title("Sensor F values", fontsize=12)
     ax_bar.grid(True, axis="x", linestyle="--", alpha=0.3)
 
+    # GIF 프레임 캡처
+    if SAVE_GIF and len(gif_frames) < MAX_GIF_FRAMES:
+        fig.canvas.draw()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=80, bbox_inches="tight")
+        buf.seek(0)
+        gif_frames.append(Image.open(buf).copy())
+        buf.close()
+
 ani = animation.FuncAnimation(fig, update, interval=50, cache_frame_data=False)
 plt.tight_layout()
 plt.show()
+
+# ──── GIF 저장 ────
+if SAVE_GIF and gif_frames:
+    gif_name = f"fire_monitor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.gif"
+    gif_frames[0].save(
+        gif_name,
+        save_all=True,
+        append_images=gif_frames[1:],
+        duration=int(1000 / GIF_FPS),
+        loop=0,
+    )
+    print(f"GIF saved: {gif_name} ({len(gif_frames)} frames)")
+else:
+    print("No GIF frames captured.")
 
 data_file.close()
 print(f"Data saved to {DATA_FILE}")

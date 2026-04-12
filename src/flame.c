@@ -185,7 +185,8 @@ void TIMx_IRQHandler(void)
         TIMx->SR &= ~0x1;
         volatile float raw_linearized[SENSOR_NUM];
         _get_linearize_sensor_data(raw_linearized);
-        Kalman_Filter(raw_linearized, (volatile float *)flame_sensors_linearized);
+        volatile float u[CONTROL_DIM] = {(float)x, y};
+        Kalman_Filter(raw_linearized, (volatile float *)flame_sensors_linearized, u);
         latest_fire_vector = fire_vector_estimation();
         printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4d y=%4.4f ANG=%4.4f\n",
                flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
@@ -464,8 +465,9 @@ static int mat_inv(float inv[N][N], const float src[N][N])
  * ================================================================ */
 static float kf_x[N];          // 상태 추정치
 static float kf_P[N][N];       // 오차 공분산
-static float kf_R[N][N];       // 측정 노이즈 공분산
+static float kf_R_base[N][N];  // 측정 노이즈 공분산 (기준값)
 static float kf_Q[N][N];       // 프로세스 노이즈 공분산
+static float kf_B[N][CONTROL_DIM]; // 제어 입력 행렬
 static int   kf_initialized = 0;
 
 static void Kalman_Init(const volatile float *z_init)
@@ -474,7 +476,7 @@ static void Kalman_Init(const volatile float *z_init)
     float R_init[N][N] = KALMAN_R;
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++)
-            kf_R[i][j] = R_init[i][j];
+            kf_R_base[i][j] = R_init[i][j];
 
     // Q 초기화 (대각)
     for (int i = 0; i < N; i++)
@@ -490,10 +492,16 @@ static void Kalman_Init(const volatile float *z_init)
     for (int i = 0; i < N; i++)
         kf_x[i] = z_init[i];
 
+    // B 초기화
+    float B_init[N][CONTROL_DIM] = KALMAN_B;
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < CONTROL_DIM; j++)
+            kf_B[i][j] = B_init[i][j];
+
     kf_initialized = 1;
 }
 
-void Kalman_Filter(volatile float *z, volatile float *x_out)
+void Kalman_Filter(volatile float *z, volatile float *x_out, volatile float *u)
 {
     if (!kf_initialized)
     {
@@ -503,16 +511,42 @@ void Kalman_Filter(volatile float *z, volatile float *x_out)
         return;
     }
 
-    /* 1. 예측 단계: x_pred = x (등속 모델, B*u = 0) */
-    //    상태 변화 없음, kf_x 유지
+    /* 1. 예측 단계: x_pred = x + B*u */
+    for (int i = 0; i < N; i++)
+    {
+        float bu = 0;
+        for (int j = 0; j < CONTROL_DIM; j++)
+            bu += kf_B[i][j] * u[j];
+        kf_x[i] += bu;
+    }
 
     /* 2. 불확실성 예측: P = P + Q */
     float P_pred[N][N];
     mat_add(P_pred, kf_P, kf_Q);
 
-    /* 3. 칼만 이득: K = P_pred * (P_pred + R)^(-1) */
-    float S[N][N];          // S = P_pred + R
-    mat_add(S, P_pred, kf_R);
+    /* 2.5 Adaptive R: innovation 기반으로 R 스케일링 */
+    float innovation[N];
+    float R_adapted[N][N];
+    for (int i = 0; i < N; i++)
+        innovation[i] = z[i] - kf_x[i];
+
+    // R_adapted = R_base 복사 후 대각만 스케일링
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            R_adapted[i][j] = kf_R_base[i][j];
+
+    for (int i = 0; i < N; i++)
+    {
+        float abs_innov = fabsf(innovation[i]);
+        float adaptive_term = ADAPTIVE_R_ALPHA * expf(abs_innov / ADAPTIVE_R_BETA);
+        if (adaptive_term > ADAPTIVE_R_THRESHOLD)
+            adaptive_term = ADAPTIVE_R_THRESHOLD;
+        R_adapted[i][i] = kf_R_base[i][i] + adaptive_term;
+    }
+
+    /* 3. 칼만 이득: K = P_pred * (P_pred + R_adapted)^(-1) */
+    float S[N][N];          // S = P_pred + R_adapted
+    mat_add(S, P_pred, R_adapted);
 
     float S_inv[N][N];
     if (!mat_inv(S_inv, S))
@@ -526,11 +560,7 @@ void Kalman_Filter(volatile float *z, volatile float *x_out)
     float K[N][N];          // K = P_pred * S_inv
     mat_mul(K, P_pred, S_inv);
 
-    /* 4. 상태 업데이트: x = x + K * (z - x) */
-    float innovation[N];    // z - x_pred
-    for (int i = 0; i < N; i++)
-        innovation[i] = z[i] - kf_x[i];
-
+    /* 4. 상태 업데이트: x = x + K * innovation */
     for (int i = 0; i < N; i++)
     {
         float correction = 0;
