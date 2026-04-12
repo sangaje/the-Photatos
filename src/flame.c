@@ -225,6 +225,12 @@ void _Init_Directional_Component_Vector(void)
         printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
         /* code */
     }
+    for (size_t i = 0; i < SENSOR_NUM; i++)
+    {
+        printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
+        /* code */
+    }
+    
 }
 
 /**
