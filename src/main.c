@@ -17,11 +17,12 @@
 #define AIM_STEPPER_ACT_DEADBAND 2
 #define STEPPER_X_DEADBAND 8
 
-
-static volatile float servo_angle = SERVO_INIT_ANGLE;
+volatile float servo_angle = SERVO_INIT_ANGLE;
 static int current = 0;
 static int last_servo_cmd = SERVO_INIT_ANGLE;
 static int mode = 0; // 0: Idle, 1: Active
+volatile float y = 0.0f;
+int x = 0;
 
 FireState fire_state = STATE_SAFE; // 초기 상태는 안전
 
@@ -114,7 +115,7 @@ void Main(void)
         if (fire_vector.intensity < 40.f)
         {
             /* --- stepper (pan) --- */
-            int x = -(int)(fire_vector.x * 200.f);
+            x = -(int)(fire_vector.x * 200.f);
             
             if (x > AIM_STEPPER_ACT_DEADBAND || x < -AIM_STEPPER_ACT_DEADBAND)
             {
@@ -130,20 +131,22 @@ void Main(void)
             }
             
             /* --- servo (tilt) --- */
-            volatile float y = -(fire_vector.y * 5.f);
+            y = (fire_vector.y * 10.f);
             y = y > 0.5 ? 1 : (y < -0.5 ? -1 : y);
             
-                servo_angle -= y;
-                servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE :
-                ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
-                Servo_Set_Angle(servo_angle+10);
+            servo_angle -= y;
+            // servo_angle = (servo_angle < SERVO_MIN_ANGLE) ? SERVO_MIN_ANGLE :
+            // ((servo_angle > SERVO_MAX_ANGLE) ? SERVO_MAX_ANGLE : servo_angle);
+            Servo_Set_Angle(servo_angle);
             
             }
             else {
                 Servo_Set_Angle(55);
+                servo_angle = 55;
             }
+            
         Pump_Control_Update(v[0], v[1], fire_vector.intensity, flames, SENSOR_NUM);
         fire_state = Update_Fire_State(fire_state, fire_vector.intensity);
-        TIM2_Delay(10);
+        TIM2_Delay(50);
     }
 }
