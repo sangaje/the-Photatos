@@ -53,9 +53,9 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
        ----------------------------- */
     if (pump_auto_state == 0)
     {
-        if ((intensity < 40.0f) &&
-            (step_x >= -0.04f && step_x <= 0.04f) &&
-            (servo_y >= -0.04f && servo_y <= 0.04f))
+        if ((intensity < 35.0f) &&
+            (step_x >= -0.06f && step_x <= 0.06f) &&
+            (servo_y >= -0.06f && servo_y <= 0.06f))
         {
             stable_now = 1;
         }
@@ -65,7 +65,7 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
             /* 안정 상태에 처음 진입한 순간 5초 타이머 시작 */
             if (!stable_timer_running)
             {
-                SysTick_Run(5000);
+                SysTick_Run(1000);
                 stable_timer_running = 1;
                 printf("[PUMP] Stable detected -> 5s timer start\n");
             }
@@ -105,7 +105,7 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
         {
             if (!pump_off_timer_running)
             {
-                SysTick_Run(2000);
+                SysTick_Run(500);
                 pump_off_timer_running = 1;
                 printf("[PUMP] High intensity detected -> off timer start\n");
             }
