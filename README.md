@@ -460,7 +460,9 @@ $$v_i = \sqrt{\frac{65535}{\max(\text{raw}_i, 1)} - 1}$$
 
 본 시스템의 **상태 벡터** $\mathbf{x} \in \mathbb{R}^4$는 4개 화염 센서의 필터링된 값입니다:
 
-$$\mathbf{x} = \begin{pmatrix} x_0 \\ x_1 \\ x_2 \\ x_3 \end{pmatrix}$$
+$$
+\mathbf{x} = \begin{pmatrix} x_0 \\ x_1 \\ x_2 \\ x_3 \end{pmatrix}
+$$
 
 각 $x_i$는 센서 $i$의 칼만 필터 출력(filtered value)입니다.
 
@@ -474,7 +476,9 @@ $$z_i = \sqrt{\frac{65535}{\max(\text{raw}_i, 1)} - 1}$$
 
 **제어 입력** $\mathbf{u} \in \mathbb{R}^2$는 현재 모터 구동량입니다:
 
-$$\mathbf{u} = \begin{pmatrix} x_{\text{stepper}} \\ y_{\text{servo}} \end{pmatrix}$$
+$$
+\mathbf{u} = \begin{pmatrix} x_{\text{stepper}} \\ y_{\text{servo}} \end{pmatrix}
+$$
 
 #### 시스템 모델 수식
 
@@ -504,17 +508,23 @@ $\mathbf{B} \in \mathbb{R}^{4 \times 2}$는 모터 움직임이 각 센서값에
 
 먼저, 어느 센서가 화염에 더 가까운지 판별합니다:
 
-$$d_{\text{pitch}} = \text{sign}(S_0 - S_2) = \begin{cases} +1 & S_0 > S_2 \\ -1 & S_0 \leq S_2 \end{cases}$$
+$$
+d_{\text{pitch}} = \text{sign}(S_0 - S_2) = \begin{cases} +1 & S_0 > S_2 \\ -1 & S_0 \leq S_2 \end{cases}
+$$
 
 - $+1$: 상단 센서(S0) 우세, $-1$: 하단 센서(S2) 우세
 
-$$d_{\text{yaw}} = \text{sign}(S_1 - S_3) = \begin{cases} +1 & S_1 > S_3 \\ -1 & S_1 \leq S_3 \end{cases}$$
+$$
+d_{\text{yaw}} = \text{sign}(S_1 - S_3) = \begin{cases} +1 & S_1 > S_3 \\ -1 & S_1 \leq S_3 \end{cases}
+$$
 
 - $+1$: 좌측 센서(S1) 우세, $-1$: 우측 센서(S3) 우세
 
 #### $\mathbf{B}$ 행렬 구성
 
-$$\mathbf{B}_k = K_p \cdot \begin{pmatrix} 0 & +d_{\text{pitch}} \\ +d_{\text{yaw}} & 0 \\ 0 & -d_{\text{pitch}} \\ -d_{\text{yaw}} & 0 \end{pmatrix}$$
+$$
+\mathbf{B}_k = K_p \cdot \begin{pmatrix} 0 & +d_{\text{pitch}} \\ +d_{\text{yaw}} & 0 \\ 0 & -d_{\text{pitch}} \\ -d_{\text{yaw}} & 0 \end{pmatrix}
+$$
 
 여기서:
 - $K_p = 0.01$ — B 스케일 게인 (`KALMAN_B_Kp`)
@@ -574,7 +584,9 @@ $$R_{\text{eff},ii} = R_{\text{base},ii} + \min\left(\tau, \; \alpha \cdot e^{|e
 
 **기본 측정 노이즈 공분산 $\mathbf{R}_{\text{base}}$** — 실측 데이터 `data.txt`에서 계산된 4×4 공분산 행렬:
 
-$$\mathbf{R}_{\text{base}} = \begin{pmatrix} 429.077 & -0.198 & -2.289 & 1.742 \\ -0.198 & 106.275 & 2.351 & -0.231 \\ -2.289 & 2.351 & 283.245 & -0.021 \\ 1.742 & -0.231 & -0.021 & 70.194 \end{pmatrix}$$
+$$
+\mathbf{R}_{\text{base}} = \begin{pmatrix} 429.077 & -0.198 & -2.289 & 1.742 \\ -0.198 & 106.275 & 2.351 & -0.231 \\ -2.289 & 2.351 & 283.245 & -0.021 \\ 1.742 & -0.231 & -0.021 & 70.194 \end{pmatrix}
+$$
 
 > 비대각 성분(센서 간 상관관계)이 매우 작아 센서들이 거의 독립적임을 나타냅니다. 대각 성분의 차이는 센서별 노이즈 수준 차이를 반영합니다.
 
@@ -656,7 +668,9 @@ $$\mathbf{x}_0 = \mathbf{z}_0, \quad \mathbf{P}_0 = 1000 \cdot \mathbf{I}_4$$
 
 $$d_{\text{pitch}} = \text{sign}(z_0 - z_2), \quad d_{\text{yaw}} = \text{sign}(z_1 - z_3)$$
 
-$$\mathbf{B}_k = 0.01 \cdot \begin{pmatrix} 0 & d_{\text{pitch}} \\ d_{\text{yaw}} & 0 \\ 0 & -d_{\text{pitch}} \\ -d_{\text{yaw}} & 0 \end{pmatrix}$$
+$$
+\mathbf{B}_k = 0.01 \cdot \begin{pmatrix} 0 & d_{\text{pitch}} \\ d_{\text{yaw}} & 0 \\ 0 & -d_{\text{pitch}} \\ -d_{\text{yaw}} & 0 \end{pmatrix}
+$$
 
 **[Step 2. Prediction]**
 
@@ -747,7 +761,9 @@ flowchart TD
 
 4개 센서는 원형으로 90° 간격 배치되며, 각 센서의 **방향 단위 벡터** $\hat{\mathbf{d}}_i$는 회전 행렬로 생성됩니다:
 
-$$\hat{\mathbf{d}}_i = \begin{pmatrix} -\sin(2\pi i / N) \\ \cos(2\pi i / N) \end{pmatrix}, \quad i = 0, 1, \dots, N-1, \quad N = 4$$
+$$
+\hat{\mathbf{d}}_i = \begin{pmatrix} -\sin(2\pi i / N) \\ \cos(2\pi i / N) \end{pmatrix}, \quad i = 0, 1, \dots, N-1, \quad N = 4
+$$
 
 | 센서 | 각도 | 방향 벡터 $(d_x, d_y)$ | 물리 위치 |
 |------|------|----------------------|----------|
@@ -776,7 +792,9 @@ flowchart TD
 
 첫 번째 벡터 $\hat{\mathbf{d}}_0 = (0, 1)$에서 시작하여, 2D 회전 행렬을 반복 곱하여 나머지 벡터를 생성합니다:
 
-$$\hat{\mathbf{d}}_i = R(\theta) \cdot \hat{\mathbf{d}}_{i-1} = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \hat{\mathbf{d}}_{i-1}, \quad \theta = \frac{2\pi}{N}$$
+$$
+\hat{\mathbf{d}}_i = R(\theta) \cdot \hat{\mathbf{d}}_{i-1} = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \hat{\mathbf{d}}_{i-1}, \quad \theta = \frac{2\pi}{N}
+$$
 
 ### 벡터 계산 (`fire_vector_estimation`)
 
@@ -862,7 +880,9 @@ $$\text{steps} = -\lfloor \text{vx} \times 200 \rfloor + 5$$
 
 $$y = \text{vy} \times 10$$
 
-$$y_{\text{clamp}} = \begin{cases} +1.0 & y > 0.5 \\ -1.0 & y < -0.5 \\ y & \text{else} \end{cases}$$
+$$
+y_{\text{clamp}} = \begin{cases} +1.0 & y > 0.5 \\ -1.0 & y < -0.5 \\ y & \text{else} \end{cases}
+$$
 
 $$\theta_{n+1} = \theta_n - y_{\text{clamp}}, \quad \theta \in [30, 150]$$
 
