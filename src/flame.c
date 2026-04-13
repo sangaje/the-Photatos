@@ -178,20 +178,27 @@ void _Timer_Init(uint16_t psc, uint16_t arr)
 
 volatile FireVector_t latest_fire_vector = {0, 0, 0};
 
+#define PRINT_DECIMATION 10 /* printf는 PRINT_DECIMATION 회마다 1번 */
+volatile int flame_print_ready = 0; /* main loop에서 폴링 */
+
 void TIMx_IRQHandler(void)
 {
     if (TIMx->SR & 0x1) // Update interrupt
     {
         TIMx->SR &= ~0x1;
+        static int print_cnt = 0;
+
         volatile float raw_linearized[SENSOR_NUM];
         _get_linearize_sensor_data(raw_linearized);
         volatile float u[CONTROL_DIM] = {(float)x, y};
         Kalman_Filter(raw_linearized, (volatile float *)flame_sensors_linearized, u);
         latest_fire_vector = fire_vector_estimation();
-        printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4d y=%4.4f ANG=%4.4f\n",
-               flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
-               flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3],
-               latest_fire_vector.x, latest_fire_vector.y, latest_fire_vector.intensity, x, y, servo_angle);
+
+        if (++print_cnt >= PRINT_DECIMATION)
+        {
+            print_cnt = 0;
+            flame_print_ready = 1;
+        }
     }
 }
 
@@ -236,7 +243,6 @@ void _Init_Directional_Component_Vector(void)
         printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
         /* code */
     }
-    
 }
 
 /**
@@ -258,7 +264,7 @@ void Flame_Init(int *chs)
     _DMA_Init();
     _ADC_Start();
     _Init_Directional_Component_Vector();
-    _Timer_Init(16000, 100); // 100ms마다 인터럽트 발생 (16MHz / 16000 = 1kHz -> 100ms)
+    _Timer_Init(960, 1000); // 10ms마다 인터럽트 발생 (TIMXCLK 96MHz / 960 = 100kHz, ARR=1000 → 10ms)
 }
 
 // /**
@@ -309,7 +315,7 @@ void Flame_Init(int *chs)
 //     {
 //         qsort((void *)temp_values[i], count + 100, sizeof(float), compare_floats); // Sort each sensor's samples
 //     }
-// 
+//
 //     for (int i = 0; i < SENSOR_NUM; i++)
 //     {
 //         for (int j = 50; j < NUMBER_OF_SAMPLES + 50; j++)
@@ -418,9 +424,14 @@ static int mat_inv(float inv[N][N], const float src[N][N])
         for (int row = col + 1; row < N; row++)
         {
             float v = fabsf(aug[row][col]);
-            if (v > max_val) { max_val = v; max_row = row; }
+            if (v > max_val)
+            {
+                max_val = v;
+                max_row = row;
+            }
         }
-        if (max_val < 1e-12f) return 0; // 특이 행렬
+        if (max_val < 1e-12f)
+            return 0; // 특이 행렬
         // 행 교환
         if (max_row != col)
         {
@@ -438,7 +449,8 @@ static int mat_inv(float inv[N][N], const float src[N][N])
         // 소거
         for (int row = 0; row < N; row++)
         {
-            if (row == col) continue;
+            if (row == col)
+                continue;
             float factor = aug[row][col];
             for (int j = 0; j < 2 * N; j++)
                 aug[row][j] -= factor * aug[col][j];
@@ -463,12 +475,60 @@ static int mat_inv(float inv[N][N], const float src[N][N])
  *  x = x + K(z - x) (상태 업데이트)
  *  P = (I - K) P    (불확실성 감소)
  * ================================================================ */
-static float kf_x[N];          // 상태 추정치
-static float kf_P[N][N];       // 오차 공분산
-static float kf_R_base[N][N];  // 측정 노이즈 공분산 (기준값)
-static float kf_Q[N][N];       // 프로세스 노이즈 공분산
-static float kf_B[N][CONTROL_DIM]; // 제어 입력 행렬
-static int   kf_initialized = 0;
+static float kf_x[N];              // 상태 추정치
+static float kf_P[N][N];           // 오차 공분산
+static float kf_R_base[N][N];      // 측정 노이즈 공분산 (기준값)
+static float kf_Q[N][N];           // 프로세스 노이즈 공분산
+static float kf_B[N][CONTROL_DIM]; // 제어 입력 행렬 (매 스텝 동적 계산)
+static int kf_initialized = 0;
+
+/**
+ * @brief Dominant 센서 기반으로 B 행렬을 동적 계산.
+ *
+ *  Pitch(servo, u[1]): S0(상) vs S2(하)
+ *    pitch_dir = (S0 > S2) ? +1 : -1
+ *    B[0][1] =  Kp * pitch_dir * max(S0, S2)
+ *    B[2][1] = -Kp * pitch_dir * max(S0, S2)
+ *
+ *  Yaw(stepper, u[0]): S1 vs S3
+ *    yaw_dir = (S1 > S3) ? +1 : -1
+ *    B[1][0] =  Kp * yaw_dir * max(S1, S3)
+ *    B[3][0] = -Kp * yaw_dir * max(S1, S3)
+ */
+extern volatile unsigned char pump_auto_state;
+
+static void Update_B_Matrix(const volatile float *z)
+{
+    /* 펌프 작동 중이면 모터 입력 무시 → B = 0 */
+    if (pump_auto_state)
+    {
+        for (int i = 0; i < N; i++)
+            for (int j = 0; j < CONTROL_DIM; j++)
+                kf_B[i][j] = 0.0f;
+        return;
+    }
+
+    float s0 = z[0], s1 = z[1], s2 = z[2], s3 = z[3];
+
+    /* Pitch 축: S0(상) vs S2(하) → u[1] = servo */
+    float pitch_dir = (s0 > s2) ? 1.0f : -1.0f;
+
+    /* Yaw 축: S1 vs S3 → u[0] = stepper */
+    float yaw_dir = (s1 > s3) ? 1.0f : -1.0f;
+
+    /* B 행렬 초기화 (교차 항은 0) */
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < CONTROL_DIM; j++)
+            kf_B[i][j] = 0.0f;
+
+    /* Pitch 열 (u[1]) */
+    kf_B[0][1] = KALMAN_B_Kp * pitch_dir;
+    kf_B[2][1] = -KALMAN_B_Kp * pitch_dir;
+
+    /* Yaw 열 (u[0]) */
+    kf_B[1][0] = KALMAN_B_Kp * yaw_dir;
+    kf_B[3][0] = -KALMAN_B_Kp * yaw_dir;
+}
 
 static void Kalman_Init(const volatile float *z_init)
 {
@@ -492,11 +552,8 @@ static void Kalman_Init(const volatile float *z_init)
     for (int i = 0; i < N; i++)
         kf_x[i] = z_init[i];
 
-    // B 초기화
-    float B_init[N][CONTROL_DIM] = KALMAN_B;
-    for (int i = 0; i < N; i++)
-        for (int j = 0; j < CONTROL_DIM; j++)
-            kf_B[i][j] = B_init[i][j];
+    // B는 매 스텝 동적 계산 → 초기값은 첫 측정치 기반
+    Update_B_Matrix(z_init);
 
     kf_initialized = 1;
 }
@@ -510,6 +567,9 @@ void Kalman_Filter(volatile float *z, volatile float *x_out, volatile float *u)
             x_out[i] = kf_x[i];
         return;
     }
+
+    /* 0. 측정치 기반 B 행렬 동적 갱신 */
+    Update_B_Matrix(z);
 
     /* 1. 예측 단계: x_pred = x + B*u */
     for (int i = 0; i < N; i++)
@@ -545,7 +605,7 @@ void Kalman_Filter(volatile float *z, volatile float *x_out, volatile float *u)
     }
 
     /* 3. 칼만 이득: K = P_pred * (P_pred + R_adapted)^(-1) */
-    float S[N][N];          // S = P_pred + R_adapted
+    float S[N][N]; // S = P_pred + R_adapted
     mat_add(S, P_pred, R_adapted);
 
     float S_inv[N][N];
@@ -557,7 +617,7 @@ void Kalman_Filter(volatile float *z, volatile float *x_out, volatile float *u)
         return;
     }
 
-    float K[N][N];          // K = P_pred * S_inv
+    float K[N][N]; // K = P_pred * S_inv
     mat_mul(K, P_pred, S_inv);
 
     /* 4. 상태 업데이트: x = x + K * innovation */
@@ -573,14 +633,23 @@ void Kalman_Filter(volatile float *z, volatile float *x_out, volatile float *u)
     float I_mat[N][N];
     mat_identity(I_mat);
 
-    float IK[N][N];         // I - K
+    float IK[N][N]; // I - K
     mat_sub(IK, I_mat, K);
 
     mat_mul(kf_P, IK, P_pred);
 
-    // 출력
+    // 출력 (NaN 방지: 발산 시 측정치로 리셋)
     for (int i = 0; i < N; i++)
+    {
+        if (kf_x[i] != kf_x[i]) /* NaN check */
+        {
+            kf_initialized = 0;
+            for (int j = 0; j < N; j++)
+                x_out[j] = z[j];
+            return;
+        }
         x_out[i] = kf_x[i];
+    }
 }
 
 // /* 원본 _get_linearize_sensor_data (중앙값 + EMA 버전) */

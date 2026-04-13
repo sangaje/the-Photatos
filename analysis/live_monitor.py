@@ -12,7 +12,7 @@ from datetime import datetime
 
 # ──── 설정 ────
 COM_PORT = "COM3"       # 맞는 포트로 변경
-BAUD = 115200
+BAUD = 230400
 SENSOR_NUM = 4
 SAVE_GIF = True         # GIF 저장 여부
 GIF_FPS = 20            # GIF 프레임 레이트
@@ -170,14 +170,12 @@ def update(frame_idx):
     ax_bar.set_title("Sensor F values", fontsize=12)
     ax_bar.grid(True, axis="x", linestyle="--", alpha=0.3)
 
-    # GIF 프레임 캡처
-    if SAVE_GIF and len(gif_frames) < MAX_GIF_FRAMES:
+    # GIF 프레임 캡처 (savefig 대신 canvas buffer 직접 사용 — 10배 이상 빠름)
+    if SAVE_GIF and len(gif_frames) < MAX_GIF_FRAMES and frame_idx % 3 == 0:
         fig.canvas.draw()
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=80, bbox_inches="tight")
-        buf.seek(0)
-        gif_frames.append(Image.open(buf).copy())
-        buf.close()
+        w, h = fig.canvas.get_width_height()
+        buf = fig.canvas.buffer_rgba()
+        gif_frames.append(Image.frombuffer("RGBA", (w, h), buf).copy())
 
 ani = animation.FuncAnimation(fig, update, interval=50, cache_frame_data=False)
 plt.tight_layout()

@@ -26,7 +26,7 @@ typedef struct
         {1.742, -0.2305, -0.021, 70.1943}}
 
 // 프로세스 노이즈 공분산 Q — 작을수록 예측 신뢰, 클수록 측정 신뢰
-#define KALMAN_Q_DIAG 10.0f
+#define KALMAN_Q_DIAG 5.0f
 
 // 초기 오차 공분산 P 대각 값
 #define KALMAN_P_INIT 1000.0f
@@ -36,7 +36,7 @@ typedef struct
 // BETA:  민감도 (작을수록 작은 innovation에도 반응)
 // THRESHOLD: R 증가 상한선 (R_base 대비 최대 더해지는 값)
 #define ADAPTIVE_R_ALPHA 1.0f
-#define ADAPTIVE_R_BETA 10.0f
+#define ADAPTIVE_R_BETA 3.0f
 #define ADAPTIVE_R_THRESHOLD 3000.0f
 
 // 제어 입력 차원: u = [stepper_x, servo_y]
@@ -45,11 +45,8 @@ typedef struct
 // 제어 입력 행렬 B (4x2): 모터 움직임이 센서 값에 미치는 영향
 // B[i][0] = stepper(pan)가 센서 i에 미치는 계수
 // B[i][1] = servo(tilt)가 센서 i에 미치는 계수
-#define KALMAN_B {  \
-    {0.1f, 0.1f},   \
-    {0.1f, -0.1f},  \
-    {-0.1f, -0.1f}, \
-    {-0.1f, 0.1f}}
+// → 동적으로 계산: dominant 센서에 따라 부호 반전
+#define KALMAN_B_Kp 0.01f   // B 스케일 게인
 
 extern volatile FireVector_t latest_fire_vector;
 

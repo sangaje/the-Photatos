@@ -28,11 +28,7 @@ char * _sbrk(int inc)
 
 int _write(int file, char *ptr, int len) 
 {
-    for (int i = 0; i < len; i++) 
-	{
-        Uart2_Send_Byte(*ptr++);
-    }
-    
+    Uart2_DMA_Write(ptr, len);
 	return len;
 }
 
