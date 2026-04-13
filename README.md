@@ -370,13 +370,13 @@ flowchart TD
 
 ### 타이머 클럭 계산
 
-$$\text{TIM3 주기} = \frac{\text{TIMXCLK}}{\text{PSC} \times \text{ARR}} = \frac{96\,\text{MHz}}{960 \times 1000} = 100\,\text{Hz} = 10\,\text{ms}$$
+$$T_{\text{TIM3}} = \frac{\text{TIMXCLK}}{\text{PSC} \times \text{ARR}} = \frac{96\text{ MHz}}{960 \times 1000} = 100\text{ Hz} = 10\text{ ms}$$
 
-$$\text{TIM5 주기} = \frac{96\,\text{MHz}}{16000 \times 50} = 120\,\text{Hz} \approx 8.3\,\text{ms} \quad (\text{실제 설정: PSC=16000, ARR=50})$$
+$$T_{\text{TIM5}} = \frac{96\text{ MHz}}{16000 \times 50} = 120\text{ Hz} \approx 8.3\text{ ms}$$
 
-$$\text{TIM4 서보 PWM} = \frac{96\,\text{MHz}}{96 \times 20000} = 50\,\text{Hz} = 20\,\text{ms}$$
+$$T_{\text{TIM4}} = \frac{96\text{ MHz}}{96 \times 20000} = 50\text{ Hz} = 20\text{ ms}$$
 
-$$\text{SysTick} = \frac{\text{HCLK}/8}{1000} = \frac{96\,\text{MHz}/8}{1000} = 12000\,\text{ticks/ms}$$
+$$T_{\text{SysTick}} = \frac{\text{HCLK}/8}{1000} = \frac{96\text{ MHz}/8}{1000} = 12000\text{ ticks/ms}$$
 
 ---
 
@@ -432,7 +432,7 @@ DMA2_Stream0가 **Circular 모드**로 ADC1의 스캔 결과를 `flame_sensors_r
 
 IR 센서의 비선형 응답 특성을 보상하기 위해 역수 변환 + 제곱근을 적용합니다. `_get_linearize_sensor_data()` 함수가 수행합니다:
 
-$$v_i = \sqrt{\frac{\texttt{0xFFFF}}{\max(\text{raw}_i,\; 1)} - 1}$$
+$$v_i = \sqrt{\frac{65535}{\max(\text{raw}_i, 1)} - 1}$$
 
 이 변환은 IR 센서의 역제곱 법칙 특성을 선형화합니다:
 - raw 값이 작을수록(화염 가까움) → 변환 후 값이 커짐
@@ -458,15 +458,17 @@ $$v_i = \sqrt{\frac{\texttt{0xFFFF}}{\max(\text{raw}_i,\; 1)} - 1}$$
 
 #### 상태 변수
 
-본 시스템의 **상태 벡터** $\mathbf{x} \in \mathbb{R}^4$는 4개 화염 센서의 필터링된 관측값입니다:
+본 시스템의 **상태 벡터** $\mathbf{x} \in \mathbb{R}^4$는 4개 화염 센서의 필터링된 값입니다:
 
-$$\mathbf{x} = \begin{pmatrix} x_0 \\ x_1 \\ x_2 \\ x_3 \end{pmatrix} = \begin{pmatrix} \text{Sensor 0 (filtered)} \\ \text{Sensor 1 (filtered)} \\ \text{Sensor 2 (filtered)} \\ \text{Sensor 3 (filtered)} \end{pmatrix}$$
+$$\mathbf{x} = \begin{pmatrix} x_0 \\ x_1 \\ x_2 \\ x_3 \end{pmatrix}$$
+
+각 $x_i$는 센서 $i$의 칼만 필터 출력(filtered value)입니다.
 
 #### 측정 변수
 
 **측정 벡터** $\mathbf{z} \in \mathbb{R}^4$는 비선형 변환을 거친 ADC 원시값입니다:
 
-$$z_i = \sqrt{\frac{\texttt{0xFFFF}}{\max(\text{raw}_i,\; 1)} - 1}$$
+$$z_i = \sqrt{\frac{65535}{\max(\text{raw}_i, 1)} - 1}$$
 
 #### 제어 입력
 
@@ -478,9 +480,13 @@ $$\mathbf{u} = \begin{pmatrix} x_{\text{stepper}} \\ y_{\text{servo}} \end{pmatr
 
 칼만 필터의 상태 공간 모델은 다음과 같이 정의됩니다:
 
-$$\text{상태 천이:} \quad \mathbf{x}_k = \mathbf{F} \cdot \mathbf{x}_{k-1} + \mathbf{B}_k \cdot \mathbf{u}_k + \mathbf{w}_k, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0},\, \mathbf{Q})$$
+**State Transition:**
 
-$$\text{측정 모델:} \quad \mathbf{z}_k = \mathbf{H} \cdot \mathbf{x}_k + \mathbf{v}_k, \quad \mathbf{v}_k \sim \mathcal{N}(\mathbf{0},\, \mathbf{R}_k)$$
+$$\mathbf{x}_k = \mathbf{F} \cdot \mathbf{x}_{k-1} + \mathbf{B}_k \cdot \mathbf{u}_k + \mathbf{w}_k, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q})$$
+
+**Measurement Model:**
+
+$$\mathbf{z}_k = \mathbf{H} \cdot \mathbf{x}_k + \mathbf{v}_k, \quad \mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$$
 
 본 시스템에서는 **등속 모델**($\mathbf{F} = \mathbf{I}$)과 **직접 관측**($\mathbf{H} = \mathbf{I}$)을 사용하므로 간소화됩니다:
 
@@ -498,9 +504,13 @@ $\mathbf{B} \in \mathbb{R}^{4 \times 2}$는 모터 움직임이 각 센서값에
 
 먼저, 어느 센서가 화염에 더 가까운지 판별합니다:
 
-$$d_{\text{pitch}} = \text{sign}(S_0 - S_2) = \begin{cases} +1 & \text{if } S_0 > S_2 \quad \text{(상단 센서 우세)} \\ -1 & \text{if } S_0 \leq S_2 \quad \text{(하단 센서 우세)} \end{cases}$$
+$$d_{\text{pitch}} = \text{sign}(S_0 - S_2) = \begin{cases} +1 & S_0 > S_2 \\ -1 & S_0 \leq S_2 \end{cases}$$
 
-$$d_{\text{yaw}} = \text{sign}(S_1 - S_3) = \begin{cases} +1 & \text{if } S_1 > S_3 \quad \text{(좌측 센서 우세)} \\ -1 & \text{if } S_1 \leq S_3 \quad \text{(우측 센서 우세)} \end{cases}$$
+- $+1$: 상단 센서(S0) 우세, $-1$: 하단 센서(S2) 우세
+
+$$d_{\text{yaw}} = \text{sign}(S_1 - S_3) = \begin{cases} +1 & S_1 > S_3 \\ -1 & S_1 \leq S_3 \end{cases}$$
+
+- $+1$: 좌측 센서(S1) 우세, $-1$: 우측 센서(S3) 우세
 
 #### $\mathbf{B}$ 행렬 구성
 
@@ -520,11 +530,11 @@ $$\mathbf{B}_k = K_p \cdot \begin{pmatrix} 0 & +d_{\text{pitch}} \\ +d_{\text{ya
 
 이전 상태에서 현재 상태를 예측합니다:
 
-$$\boxed{\hat{\mathbf{x}}_{k|k-1} = \mathbf{x}_{k-1} + \mathbf{B}_k \cdot \mathbf{u}_k}$$
+$$\hat{\mathbf{x}}_{k|k-1} = \mathbf{x}_{k-1} + \mathbf{B}_k \cdot \mathbf{u}_k$$
 
 오차 공분산도 프로세스 노이즈만큼 증가시킵니다:
 
-$$\boxed{\mathbf{P}_{k|k-1} = \mathbf{P}_{k-1} + \mathbf{Q}}$$
+$$\mathbf{P}_{k|k-1} = \mathbf{P}_{k-1} + \mathbf{Q}$$
 
 여기서 $\mathbf{Q} = q \cdot \mathbf{I}_4$는 대각 프로세스 노이즈 행렬로, $q = 5.0$ (`KALMAN_Q_DIAG`)입니다.
 
@@ -537,7 +547,7 @@ $$\boxed{\mathbf{P}_{k|k-1} = \mathbf{P}_{k-1} + \mathbf{Q}}$$
 
 예측값과 실제 측정값의 차이(**Innovation** 또는 **잔차**)를 구합니다:
 
-$$\boxed{\mathbf{e}_k = \mathbf{z}_k - \hat{\mathbf{x}}_{k|k-1}}$$
+$$\mathbf{e}_k = \mathbf{z}_k - \hat{\mathbf{x}}_{k|k-1}$$
 
 Innovation은 두 가지 역할을 합니다:
 1. **칼만 이득 업데이트**: 상태를 보정하는 데 사용
@@ -549,7 +559,7 @@ Innovation은 두 가지 역할을 합니다:
 
 일반 칼만 필터의 **고정된 $\mathbf{R}$** 은 환경 변화에 대응하지 못합니다. 본 시스템은 **Innovation 크기에 비례하여 $\mathbf{R}$의 대각 성분을 지수적으로 증가**시킵니다:
 
-$$\boxed{R_{\text{eff}}[i][i] = R_{\text{base}}[i][i] + \min\!\Big(\tau,\; \alpha \cdot \exp\!\Big(\frac{|e_i|}{\beta}\Big)\Big)}$$
+$$R_{\text{eff},ii} = R_{\text{base},ii} + \min\left(\tau, \; \alpha \cdot e^{|e_i|/\beta}\right)$$
 
 **직관적 해석:**
 - Innovation $|e_i|$가 **작을 때**: $R_{\text{eff}} \approx R_{\text{base}}$ → 측정값을 적극 반영
@@ -574,11 +584,11 @@ $$\mathbf{R}_{\text{base}} = \begin{pmatrix} 429.077 & -0.198 & -2.289 & 1.742 \
 
 먼저 **Innovation 공분산** $\mathbf{S}$를 구합니다:
 
-$$\boxed{\mathbf{S}_k = \mathbf{P}_{k|k-1} + \mathbf{R}_{\text{eff}}}$$
+$$\mathbf{S}_k = \mathbf{P}_{k|k-1} + \mathbf{R}_{\text{eff}}$$
 
 그 다음, $\mathbf{S}$의 역행렬을 이용하여 **칼만 이득** $\mathbf{K}$를 구합니다:
 
-$$\boxed{\mathbf{K}_k = \mathbf{P}_{k|k-1} \cdot \mathbf{S}_k^{-1}}$$
+$$\mathbf{K}_k = \mathbf{P}_{k|k-1} \cdot \mathbf{S}_k^{-1}$$
 
 **칼만 이득의 직관적 의미:**
 - $\mathbf{K} \to \mathbf{I}$: 측정값을 완전히 신뢰 (P가 크고 R이 작을 때)
@@ -601,11 +611,11 @@ $$\boxed{\mathbf{K}_k = \mathbf{P}_{k|k-1} \cdot \mathbf{S}_k^{-1}}$$
 
 **상태 보정** — 예측값을 칼만 이득과 Innovation으로 보정합니다:
 
-$$\boxed{\mathbf{x}_k = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \cdot \mathbf{e}_k}$$
+$$\mathbf{x}_k = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \cdot \mathbf{e}_k$$
 
 **오차 공분산 갱신** — 업데이트로 불확실성이 감소합니다:
 
-$$\boxed{\mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k) \cdot \mathbf{P}_{k|k-1}}$$
+$$\mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k) \cdot \mathbf{P}_{k|k-1}$$
 
 ---
 
@@ -615,9 +625,9 @@ $$\boxed{\mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k) \cdot \mathbf{P}_{k|k-1}}$$
 
 | 단계 | 조건 | 동작 |
 |------|------|------|
-| **역행렬 실패** | $\mathbf{S}$ 특이 행렬 (피벗 < $10^{-12}$) | 측정치 직접 출력: $\mathbf{x}_{\text{out}} = \mathbf{z}$ |
-| **NaN 감지** | $x_i \neq x_i$ (IEEE 754 NaN 자기비교) | 필터 완전 리셋: `kf_initialized = 0` |
-| **초기화** | 첫 호출 시 | $\mathbf{x} = \mathbf{z}$, $\mathbf{P} = 1000 \cdot \mathbf{I}$ (높은 초기 불확실성) |
+| **역행렬 실패** | S 특이 행렬 (피벗 < 1e-12) | 측정치 직접 출력: x_out = z |
+| **NaN 감지** | x[i] != x[i] (IEEE 754 NaN 자기비교) | 필터 완전 리셋: `kf_initialized = 0` |
+| **초기화** | 첫 호출 시 | x = z, P = 1000·I (높은 초기 불확실성) |
 
 ---
 
@@ -638,26 +648,41 @@ $$\boxed{\mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k) \cdot \mathbf{P}_{k|k-1}}$$
 
 한 눈에 보는 칼만 필터 전체 수식입니다:
 
-$$\begin{aligned}
-&\textbf{[초기화]} \\
-&\quad \mathbf{x}_0 = \mathbf{z}_0, \quad \mathbf{P}_0 = 1000 \cdot \mathbf{I}_4 \\[8pt]
-&\textbf{[Step 1. B 행렬 동적 갱신]} \\
-&\quad d_{\text{pitch}} = \text{sign}(z_0 - z_2), \quad d_{\text{yaw}} = \text{sign}(z_1 - z_3) \\
-&\quad \mathbf{B}_k = 0.01 \cdot \begin{pmatrix} 0 & d_{\text{pitch}} \\ d_{\text{yaw}} & 0 \\ 0 & -d_{\text{pitch}} \\ -d_{\text{yaw}} & 0 \end{pmatrix} \\[8pt]
-&\textbf{[Step 2. 예측]} \\
-&\quad \hat{\mathbf{x}}_{k|k-1} = \mathbf{x}_{k-1} + \mathbf{B}_k \, \mathbf{u}_k \\
-&\quad \mathbf{P}_{k|k-1} = \mathbf{P}_{k-1} + \mathbf{Q} \\[8pt]
-&\textbf{[Step 3. Innovation]} \\
-&\quad \mathbf{e}_k = \mathbf{z}_k - \hat{\mathbf{x}}_{k|k-1} \\[8pt]
-&\textbf{[Step 4. Adaptive R]} \\
-&\quad R_{\text{eff}}[i][i] = R_{\text{base}}[i][i] + \min\!\big(\tau,\; \alpha \, e^{|e_i|/\beta}\big) \\[8pt]
-&\textbf{[Step 5. 칼만 이득]} \\
-&\quad \mathbf{S}_k = \mathbf{P}_{k|k-1} + \mathbf{R}_{\text{eff}} \\
-&\quad \mathbf{K}_k = \mathbf{P}_{k|k-1} \, \mathbf{S}_k^{-1} \\[8pt]
-&\textbf{[Step 6. 업데이트]} \\
-&\quad \mathbf{x}_k = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \, \mathbf{e}_k \\
-&\quad \mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k) \, \mathbf{P}_{k|k-1}
-\end{aligned}$$
+**[Init]**
+
+$$\mathbf{x}_0 = \mathbf{z}_0, \quad \mathbf{P}_0 = 1000 \cdot \mathbf{I}_4$$
+
+**[Step 1. B Matrix Update]**
+
+$$d_{\text{pitch}} = \text{sign}(z_0 - z_2), \quad d_{\text{yaw}} = \text{sign}(z_1 - z_3)$$
+
+$$\mathbf{B}_k = 0.01 \cdot \begin{pmatrix} 0 & d_{\text{pitch}} \\ d_{\text{yaw}} & 0 \\ 0 & -d_{\text{pitch}} \\ -d_{\text{yaw}} & 0 \end{pmatrix}$$
+
+**[Step 2. Prediction]**
+
+$$\hat{\mathbf{x}}_{k|k-1} = \mathbf{x}_{k-1} + \mathbf{B}_k \mathbf{u}_k$$
+
+$$\mathbf{P}_{k|k-1} = \mathbf{P}_{k-1} + \mathbf{Q}$$
+
+**[Step 3. Innovation]**
+
+$$\mathbf{e}_k = \mathbf{z}_k - \hat{\mathbf{x}}_{k|k-1}$$
+
+**[Step 4. Adaptive R]**
+
+$$R_{\text{eff},ii} = R_{\text{base},ii} + \min\left(\tau, \; \alpha \cdot e^{|e_i|/\beta}\right)$$
+
+**[Step 5. Kalman Gain]**
+
+$$\mathbf{S}_k = \mathbf{P}_{k|k-1} + \mathbf{R}_{\text{eff}}$$
+
+$$\mathbf{K}_k = \mathbf{P}_{k|k-1} \cdot \mathbf{S}_k^{-1}$$
+
+**[Step 6. Update]**
+
+$$\mathbf{x}_k = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \cdot \mathbf{e}_k$$
+
+$$\mathbf{P}_k = (\mathbf{I} - \mathbf{K}_k) \cdot \mathbf{P}_{k|k-1}$$
 
 ---
 
@@ -722,7 +747,7 @@ flowchart TD
 
 4개 센서는 원형으로 90° 간격 배치되며, 각 센서의 **방향 단위 벡터** $\hat{\mathbf{d}}_i$는 회전 행렬로 생성됩니다:
 
-$$\hat{\mathbf{d}}_i = \begin{pmatrix} -\sin\!\left(\frac{2\pi i}{N}\right) \\[4pt] \cos\!\left(\frac{2\pi i}{N}\right) \end{pmatrix}, \quad i = 0, 1, \dots, N{-}1, \quad N = 4$$
+$$\hat{\mathbf{d}}_i = \begin{pmatrix} -\sin(2\pi i / N) \\ \cos(2\pi i / N) \end{pmatrix}, \quad i = 0, 1, \dots, N-1, \quad N = 4$$
 
 | 센서 | 각도 | 방향 벡터 $(d_x, d_y)$ | 물리 위치 |
 |------|------|----------------------|----------|
@@ -751,7 +776,7 @@ flowchart TD
 
 첫 번째 벡터 $\hat{\mathbf{d}}_0 = (0, 1)$에서 시작하여, 2D 회전 행렬을 반복 곱하여 나머지 벡터를 생성합니다:
 
-$$\hat{\mathbf{d}}_i = \mathbf{R}\left(\frac{2\pi}{N}\right) \cdot \hat{\mathbf{d}}_{i-1} = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \hat{\mathbf{d}}_{i-1}, \quad \theta = \frac{2\pi}{N}$$
+$$\hat{\mathbf{d}}_i = R(\theta) \cdot \hat{\mathbf{d}}_{i-1} = \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} \hat{\mathbf{d}}_{i-1}, \quad \theta = \frac{2\pi}{N}$$
 
 ### 벡터 계산 (`fire_vector_estimation`)
 
@@ -799,15 +824,15 @@ flowchart TD
 
 모터 제어 입력의 급격한 변화를 억제하기 위해 화염 벡터에 EMA를 적용합니다:
 
-$$\text{vx\_ema}_n = \alpha \cdot \text{vx\_raw}_n + (1 - \alpha) \cdot \text{vx\_ema}_{n-1}, \quad \alpha = 0.1$$
+$$\text{vx}_{n} = \alpha \cdot \text{vx\_raw}_{n} + (1 - \alpha) \cdot \text{vx}_{n-1}, \quad \alpha = 0.1$$
 
-$$\text{vy\_ema}_n = \alpha \cdot \text{vy\_raw}_n + (1 - \alpha) \cdot \text{vy\_ema}_{n-1}$$
+$$\text{vy}_{n} = \alpha \cdot \text{vy\_raw}_{n} + (1 - \alpha) \cdot \text{vy}_{n-1}$$
 
 $\alpha = 0.1$은 약 10 프레임(500ms)의 시정수를 가지며, 높은 주파수 노이즈를 효과적으로 억제합니다.
 
 ### 수평 제어 (스테퍼 모터 — Pan)
 
-$$\text{steps} = -\lfloor \text{vx\_ema} \times 200 \rfloor + 5$$
+$$\text{steps} = -\lfloor \text{vx} \times 200 \rfloor + 5$$
 
 | 파라미터 | 값 | 코드 상수 | 설명 |
 |----------|-----|-----------|------|
@@ -835,11 +860,11 @@ $$\text{steps} = -\lfloor \text{vx\_ema} \times 200 \rfloor + 5$$
 
 ### 수직 제어 (서보 모터 — Tilt)
 
-$$y = \text{vy\_ema} \times 10$$
+$$y = \text{vy} \times 10$$
 
-$$y_{\text{clamped}} = \begin{cases} +1.0 & \text{if } y > 0.5 \\ -1.0 & \text{if } y < -0.5 \\ y & \text{otherwise} \end{cases}$$
+$$y_{\text{clamp}} = \begin{cases} +1.0 & y > 0.5 \\ -1.0 & y < -0.5 \\ y & \text{else} \end{cases}$$
 
-$$\theta_{n+1} = \theta_n - y_{\text{clamped}}, \quad \theta \in [30°,\; 150°]$$
+$$\theta_{n+1} = \theta_n - y_{\text{clamp}}, \quad \theta \in [30, 150]$$
 
 | 파라미터 | 값 | 코드 상수 | 설명 |
 |----------|-----|-----------|------|
@@ -852,7 +877,7 @@ $$\theta_{n+1} = \theta_n - y_{\text{clamped}}, \quad \theta \in [30°,\; 150°]
 
 **PWM 펄스 폭 계산:**
 
-$$\text{pulse}(\theta) = 500 + \left\lfloor \frac{2000 \times \theta}{180} \right\rfloor \quad [\mu s]$$
+$$\text{pulse}(\theta) = 500 + \left\lfloor \frac{2000 \cdot \theta}{180} \right\rfloor \quad (\mu s)$$
 
 ---
 
