@@ -1,4 +1,6 @@
 #include "pump.h"
+#include "flame.h"
+#include <math.h>
 #include <stdio.h>
 
 volatile unsigned char pump_auto_state = 0;
@@ -25,13 +27,16 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
     if (flames == 0 || flame_count <= 0)
         return;
 
+    float vx = latest_fire_vector.x;
+    float vy = latest_fire_vector.y;
+    float distance = sqrtf(vx * vx + vy * vy);
+
     /* --- pump OFF → 안정 감지 후 ON --- */
     if (pump_auto_state == 0)
     {
         unsigned char stable_now =
             (intensity < PUMP_INTENSITY_LOW) &&
-            (step_x >= -PUMP_VECTOR_DEADBAND && step_x <= PUMP_VECTOR_DEADBAND) &&
-            (servo_y >= -PUMP_VECTOR_DEADBAND && servo_y <= PUMP_VECTOR_DEADBAND);
+            (distance < PUMP_VECTOR_DEADBAND);
 
         if (stable_now)
         {
