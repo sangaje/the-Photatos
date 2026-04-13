@@ -9,6 +9,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+extern volatile int flame_print_ready;
+extern volatile uint16_t flame_sensors_raw[];
+extern volatile float flame_sensors_linearized[];
+
 #define STEP_DELAY_MS 2
 #define SERVO_MIN_ANGLE 0
 #define SERVO_MAX_ANGLE 180
@@ -23,40 +27,50 @@ static int last_servo_cmd = SERVO_INIT_ANGLE;
 static int mode = 0; // 0: Idle, 1: Active
 volatile float y = 0.0f;
 int x = 0;
+static volatile int stepper_pending = 0;
 
 FireState fire_state = STATE_SAFE;
 
 #define MOTOR_TIMER_PSC  16000  // 16MHz / 16000 = 1kHz
 #define MOTOR_TIMER_ARR  50     // 1kHz / 50 = 20Hz = 50ms
 
-/* TIM5 ISR: 50ms 주기로 서보/스템 구동 */
+#define EMA_ALPHA 0.1f  /* 0에 가까울수록 둔감, 1이면 EMA 없음 */
+
+/* TIM5 ISR: 50ms 주기로 서보/벡터 계산 (블로킹 없음) */
 void TIM5_IRQHandler(void)
 {
     if (!(TIM5->SR & TIM_SR_UIF))
         return;
     TIM5->SR &= ~TIM_SR_UIF;
 
-    volatile float vx = latest_fire_vector.x;
-    volatile float vy = latest_fire_vector.y;
+    static float vx_ema = 0.0f;
+    static float vy_ema = 0.0f;
+
+    volatile float vx_raw = latest_fire_vector.x;
+    volatile float vy_raw = latest_fire_vector.y;
     volatile float intensity = latest_fire_vector.intensity;
+
+    vx_ema = EMA_ALPHA * vx_raw + (1.0f - EMA_ALPHA) * vx_ema;
+    vy_ema = EMA_ALPHA * vy_raw + (1.0f - EMA_ALPHA) * vy_ema;
 
     if (intensity < 100.f)
     {
-        /* --- stepper (pan) --- */
-        x = -(int)(vx * 200.f);
+        /* --- stepper (pan) --- 계산만, 실제 구동은 main loop에서 */
+        x = -(int)(vx_ema * 200.f);
         if (x > AIM_STEPPER_ACT_DEADBAND || x < -AIM_STEPPER_ACT_DEADBAND)
         {
-            Stepper_Move_Relative(x + 5);
             if (x > STEPPER_X_DEADBAND || x < -STEPPER_X_DEADBAND)
                 mode = 1;
+            stepper_pending = x + 5;
         }
         else
         {
             x = 0;
+            stepper_pending = 0;
         }
 
         /* --- servo (tilt) --- */
-        y = vy * 10.f;
+        y = vy_ema * 10.f;
         y = y > 0.5f ? 1.0f : (y < -0.5f ? -1.0f : y);
         servo_angle -= y;
         Servo_Set_Angle(servo_angle);
@@ -65,6 +79,7 @@ void TIM5_IRQHandler(void)
     {
         Servo_Set_Angle(SERVO_INIT_ANGLE);
         servo_angle = SERVO_INIT_ANGLE;
+        stepper_pending = 0;
     }
 }
 
@@ -141,7 +156,7 @@ void Main(void)
 {
     volatile float flames[SENSOR_NUM] = {0.0f};
 
-    Sys_Init(115200);
+    Sys_Init(230400);
 
     printf("\n=== FLAME MONITOR START ===\n");
     Servo_Set_Angle(SERVO_INIT_ANGLE);
@@ -153,8 +168,24 @@ void Main(void)
         volatile float vy = latest_fire_vector.y;
         volatile float intensity = latest_fire_vector.intensity;
 
+        /* stepper 구동 (ISR에서 계산된 값, main loop에서 블로킹 실행) */
+        int steps = stepper_pending;
+        if (steps != 0)
+        {
+            stepper_pending = 0;
+            Stepper_Move_Relative(steps);
+        }
+
+        if (flame_print_ready)
+        {
+            flame_print_ready = 0;
+            printf("RAW=[%4d %4d %4d %4d] F=[%4.4f %4.4f %4.4f %4.4f] V=[%4.4f %4.4f] SUM=%4.4f x=%4d y=%4.4f ANG=%4.4f\n",
+                   flame_sensors_raw[0], flame_sensors_raw[1], flame_sensors_raw[2], flame_sensors_raw[3],
+                   flame_sensors_linearized[0], flame_sensors_linearized[1], flame_sensors_linearized[2], flame_sensors_linearized[3],
+                   latest_fire_vector.x, latest_fire_vector.y, latest_fire_vector.intensity, x, y, servo_angle);
+        }
+
         Pump_Control_Update(vx, vy, intensity, flames, SENSOR_NUM);
         fire_state = Update_Fire_State(fire_state, intensity);
-        TIM2_Delay(50);
     }
 }
