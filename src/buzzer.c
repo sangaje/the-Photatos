@@ -13,9 +13,11 @@ void Buzzer_Init(void)
 void Buzzer_On(void) 
 {
     Macro_Clear_Bit(BUZZER_PORT->ODR, BUZZER_PIN);                     // Set Target Pin to Low
+    // printf("Buzzer_On() called\n");
 }
 
 void Buzzer_Off(void) 
 {
     Macro_Set_Bit(BUZZER_PORT->ODR, BUZZER_PIN);                       // Set Target Pin to High
+    // printf("Buzzer_Off() called\n");
 }

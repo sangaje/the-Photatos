@@ -31,10 +31,10 @@ static volatile int stepper_pending = 0;
 
 FireState fire_state = STATE_SAFE;
 
-#define MOTOR_TIMER_PSC  16000  // 16MHz / 16000 = 1kHz
-#define MOTOR_TIMER_ARR  50     // 1kHz / 50 = 20Hz = 50ms
+#define MOTOR_TIMER_PSC 16000 // 16MHz / 16000 = 1kHz
+#define MOTOR_TIMER_ARR 50    // 1kHz / 50 = 20Hz = 50ms
 
-#define EMA_ALPHA 0.1f  /* 0에 가까울수록 둔감, 1이면 EMA 없음 */
+#define EMA_ALPHA 0.1f /* 0에 가까울수록 둔감, 1이면 EMA 없음 */
 
 /* TIM5 ISR: 50ms 주기로 서보/벡터 계산 (블로킹 없음) */
 void TIM5_IRQHandler(void)
@@ -53,10 +53,12 @@ void TIM5_IRQHandler(void)
     vx_ema = EMA_ALPHA * vx_raw + (1.0f - EMA_ALPHA) * vx_ema;
     vy_ema = EMA_ALPHA * vy_raw + (1.0f - EMA_ALPHA) * vy_ema;
 
-    if (intensity < 100.f)
+    Pump_Control_Update(vx_ema, vy_ema, latest_fire_vector.intensity, flame_sensors_linearized, SENSOR_NUM);
+    fire_state = Update_Fire_State(fire_state, latest_fire_vector.intensity);
+    if (intensity < 90.f)
     {
         /* --- stepper (pan) --- 계산만, 실제 구동은 main loop에서 */
-        x = -(int)(vx_ema * 200.f);
+        x = -(int)(vx_ema * 100.f);
         if (x > AIM_STEPPER_ACT_DEADBAND || x < -AIM_STEPPER_ACT_DEADBAND)
         {
             if (x > STEPPER_X_DEADBAND || x < -STEPPER_X_DEADBAND)
@@ -70,7 +72,7 @@ void TIM5_IRQHandler(void)
         }
 
         /* --- servo (tilt) --- */
-        y = vy_ema * 10.f;
+        y = vy_ema * 2.f;
         y = y > 0.5f ? 1.0f : (y < -0.5f ? -1.0f : y);
         servo_angle -= y;
         Servo_Set_Angle(servo_angle);
@@ -91,7 +93,7 @@ static void Motor_Timer_Init(void)
     TIM5->PSC = MOTOR_TIMER_PSC - 1;
     TIM5->ARR = MOTOR_TIMER_ARR - 1;
     TIM5->DIER |= TIM_DIER_UIE;
-    NVIC_SetPriority(TIM5_IRQn, 2);  // 센서(TIM3)=0 보다 낮은 우선순위
+    NVIC_SetPriority(TIM5_IRQn, 2); // 센서(TIM3)=0 보다 낮은 우선순위
     NVIC_EnableIRQ(TIM5_IRQn);
     TIM5->CR1 |= TIM_CR1_CEN;
 }
@@ -101,7 +103,8 @@ static void Uart2_Send_Hex(uint32_t value)
     char hex_digits[] = "0123456789ABCDEF";
     char buffer[9]; // 8자리 + null
     buffer[8] = '\0';
-    for (int i = 7; i >= 0; i--) {
+    for (int i = 7; i >= 0; i--)
+    {
         buffer[i] = hex_digits[value & 0xF];
         value >>= 4;
     }
@@ -115,13 +118,20 @@ static void Check_Reset_Reason(void)
     Uart2_Send_Hex(csr);
     printf("\n");
 
-    if (csr & (1 << 31)) printf(" - Low-power reset\n");
-    if (csr & (1 << 30)) printf(" - Window watchdog reset\n");
-    if (csr & (1 << 29)) printf(" - Independent watchdog reset\n");
-    if (csr & (1 << 28)) printf(" - Software reset\n");
-    if (csr & (1 << 27)) printf(" - POR/PDR reset\n");
-    if (csr & (1 << 26)) printf(" - PIN reset\n");
-    if (csr & (1 << 25)) printf(" - BOR reset\n");
+    if (csr & (1 << 31))
+        printf(" - Low-power reset\n");
+    if (csr & (1 << 30))
+        printf(" - Window watchdog reset\n");
+    if (csr & (1 << 29))
+        printf(" - Independent watchdog reset\n");
+    if (csr & (1 << 28))
+        printf(" - Software reset\n");
+    if (csr & (1 << 27))
+        printf(" - POR/PDR reset\n");
+    if (csr & (1 << 26))
+        printf(" - PIN reset\n");
+    if (csr & (1 << 25))
+        printf(" - BOR reset\n");
 
     // 플래그 클리어
     RCC->CSR |= RCC_CSR_RMVF;
@@ -136,8 +146,8 @@ static void Sys_Init(int baud)
     Uart2_Init(baud);
     LED_Init();
 
-    Pump_Init(); // PC4
-    Buzzer_Init(); // PC0
+    // Pump_Init(); // PC4
+    // Buzzer_Init(); // PC0
 
     Stepper_Init();
     Servo_Init();
@@ -164,11 +174,7 @@ void Main(void)
 
     while (1)
     {
-        volatile float vx = latest_fire_vector.x;
-        volatile float vy = latest_fire_vector.y;
-        volatile float intensity = latest_fire_vector.intensity;
-
-        /* stepper 구동 (ISR에서 계산된 값, main loop에서 블로킹 실행) */
+        // stepper 구동 (ISR에서 계산된 값, main loop에서 블로킹 실행)
         int steps = stepper_pending;
         if (steps != 0)
         {
@@ -176,6 +182,7 @@ void Main(void)
             Stepper_Move_Relative(steps);
         }
 
+        // 센서/칼만/벡터 상태 출력
         if (flame_print_ready)
         {
             flame_print_ready = 0;
@@ -185,7 +192,6 @@ void Main(void)
                    latest_fire_vector.x, latest_fire_vector.y, latest_fire_vector.intensity, x, y, servo_angle);
         }
 
-        Pump_Control_Update(vx, vy, intensity, flames, SENSOR_NUM);
-        fire_state = Update_Fire_State(fire_state, intensity);
+        // TIM2_Delay(30); // 속도 조절
     }
 }

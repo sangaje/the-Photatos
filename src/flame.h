@@ -18,15 +18,16 @@ typedef struct
 /* ── 칼만 필터 튜닝 파라미터 ── */
 
 // 측정 노이즈 공분산 R (4x4) — data.txt에서 계산된 값
-#define KALMAN_R                             \
-    {                                        \
-        {429.077, -0.1982, -2.2893, 1.742},  \
-        {-0.1982, 106.2749, 2.351, -0.2305}, \
-        {-2.2893, 2.351, 283.2446, -0.021},  \
-        {1.742, -0.2305, -0.021, 70.1943}}
+#define KALMAN_R                              \
+    {                                         \
+        {27.0997, -0.9643, -0.0621, 5.8516},  \
+        {-0.9643, 24.0055, -1.5263, 1.5116},  \
+        {-0.0621, -1.5263, 38.5138, -0.1217}, \
+        {5.8516, 1.5116, -0.1217, 23.3023},   \
+    }
 
 // 프로세스 노이즈 공분산 Q — 작을수록 예측 신뢰, 클수록 측정 신뢰
-#define KALMAN_Q_DIAG 5.0f
+#define KALMAN_Q_DIAG 1.0f
 
 // 초기 오차 공분산 P 대각 값
 #define KALMAN_P_INIT 1000.0f
@@ -46,7 +47,7 @@ typedef struct
 // B[i][0] = stepper(pan)가 센서 i에 미치는 계수
 // B[i][1] = servo(tilt)가 센서 i에 미치는 계수
 // → 동적으로 계산: dominant 센서에 따라 부호 반전
-#define KALMAN_B_Kp 0.01f   // B 스케일 게인
+#define KALMAN_B_Kp 0.1f // B 스케일 게인
 
 extern volatile FireVector_t latest_fire_vector;
 
