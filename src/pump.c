@@ -17,7 +17,7 @@ void Pump_Init(void)
     SysTick_Stop();
 }
 
-inline void Pump_On(void)  { Macro_Set_Bit(PUMP_PORT->ODR, PUMP_PIN); }
+inline void Pump_On(void) { Macro_Set_Bit(PUMP_PORT->ODR, PUMP_PIN); }
 inline void Pump_Off(void) { Macro_Clear_Bit(PUMP_PORT->ODR, PUMP_PIN); }
 
 unsigned char Pump_Is_On(void) { return pump_auto_state; }
@@ -44,22 +44,23 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
             {
                 SysTick_Run(PUMP_STABLE_DELAY_MS);
                 stable_timer_running = 1;
-                printf("[PUMP] Stable -> timer start\n");
+                // printf("[PUMP] Stable -> timer start\n");
             }
             else if (SysTick_Check_Timeout())
             {
+                // printf("[PUMP] Stable for %d ms -> ON\n", PUMP_STABLE_DELAY_MS);
                 Pump_On();
                 pump_auto_state = 1;
                 stable_timer_running = 0;
                 SysTick_Stop();
-                printf("[PUMP] ON\n");
+                // printf("[PUMP] ON\n");
             }
         }
         else if (stable_timer_running)
         {
             SysTick_Stop();
             stable_timer_running = 0;
-            printf("[PUMP] Stable broken -> reset\n");
+            // printf("[PUMP] Stable broken -> reset\n");
         }
     }
     /* --- pump ON → 고강도 감지 후 OFF --- */
@@ -71,7 +72,7 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
             {
                 SysTick_Run(PUMP_OFF_DELAY_MS);
                 pump_off_timer_running = 1;
-                printf("[PUMP] High intensity -> off timer\n");
+                // printf("[PUMP] High intensity -> off timer\n");
             }
             else if (SysTick_Check_Timeout())
             {
@@ -80,14 +81,15 @@ void Pump_Control_Update(volatile float step_x, volatile float servo_y, volatile
                 stable_timer_running = 0;
                 pump_off_timer_running = 0;
                 SysTick_Stop();
-                printf("[PUMP] OFF\n");
+                // printf("[PUMP] OFF\n");
             }
         }
         else if (pump_off_timer_running)
         {
             SysTick_Stop();
             pump_off_timer_running = 0;
-            printf("[PUMP] Intensity cleared -> reset\n");
+            // printf("[PUMP] Intensity cleared -> timer reset\n");
+            // printf("[PUMP] Intensity cleared -> reset\n");
         }
     }
 }

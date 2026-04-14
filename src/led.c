@@ -9,7 +9,7 @@ void LED_Init(void) {
 
 void LED_Green_On(void) {
     // Active Low: 0을 써야 켜짐
-    printf("LED_Green_On() called\n");   
+    // printf("LED_Green_On() called\n");
     Macro_Clear_Bit(LED_PORT->ODR, LED_GREEN_PIN); 
     LED_Red_Off();
 }
@@ -20,7 +20,7 @@ void LED_Green_Off(void) {
 }
 
 void LED_Red_On(void) {
-    printf("LED_Red_On() called\n");
+    // printf("LED_Red_On() called\n");
     Macro_Clear_Bit(LED_PORT->ODR, LED_RED_PIN);
     LED_Green_Off();
 }
