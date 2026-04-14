@@ -16,7 +16,7 @@ void Set_Safe_State(void)
     LED_Green_On();
     Buzzer_Off();
     // Pump_Off();
-    printf("[SAFE] 초록LED ON / 빨간LED OFF / 부저 OFF / 펌프 OFF\n");
+    // printf("[SAFE] 초록LED ON / 빨간LED OFF / 부저 OFF / 펌프 OFF\n");
 }
 
 // ─────────────────────────────────────────
@@ -31,7 +31,7 @@ void Set_Fire_State(void)
     LED_Red_On();
     Buzzer_On();
     // Pump_On();
-    printf("[FIRE] 초록LED OFF / 빨간LED ON / 부저 ON / 펌프 ON\n");
+    // printf("[FIRE] 초록LED OFF / 빨간LED ON / 부저 ON / 펌프 ON\n");
 }
 
 // ─────────────────────────────────────────
@@ -48,7 +48,7 @@ FireState Update_Fire_State(FireState current_state, float intensity)
     // 안전 상태에서 intensity가 FIRE_THRESHOLD 이하로 내려가면 화재로 전환
     if (current_state == STATE_SAFE && intensity <= FIRE_THRESHOLD)
     {
-        printf("[STATE CHANGE] SAFE -> FIRE (Intensity=%.4f)\n", intensity);
+        // printf("[STATE CHANGE] SAFE -> FIRE (Intensity=%.4f)\n", intensity);
         new_state = STATE_FIRE;
         Set_Fire_State();
     }

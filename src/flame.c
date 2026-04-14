@@ -22,6 +22,8 @@
 // 에러 났던 부분: 반드시 CAT3를 써야 함!
 #define RCC_TIMx_EN CAT3(RCC_APB1ENR_TIM, TimerNumber, EN)
 
+volatile int flame_print_ready = 0;
+
 volatile uint16_t flame_sensors_raw[SENSOR_NUM] = {
     0x0,
 };
@@ -109,7 +111,7 @@ GPIO_TypeDef *Get_GPIO_Port_by_Channel(int ch)
     }
     else
     {
-        printf("Invalid channel number: %d\n", ch);
+        // printf("Invalid channel number: %d\n", ch);
         return NULL;
     }
     return GPIOx;
@@ -179,7 +181,6 @@ void _Timer_Init(uint16_t psc, uint16_t arr)
 volatile FireVector_t latest_fire_vector = {0, 0, 0};
 
 #define PRINT_DECIMATION 10 /* printf는 PRINT_DECIMATION 회마다 1번 */
-volatile int flame_print_ready = 0; /* main loop에서 폴링 */
 
 void TIMx_IRQHandler(void)
 {
@@ -233,16 +234,14 @@ void _Init_Directional_Component_Vector(void)
         directional_component_vector[i][0] = cos_val * x - sin_val * y;
         directional_component_vector[i][1] = sin_val * x + cos_val * y;
     }
-    for (size_t i = 0; i < SENSOR_NUM; i++)
-    {
-        printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
-        /* code */
-    }
-    for (size_t i = 0; i < SENSOR_NUM; i++)
-    {
-        printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
-        /* code */
-    }
+    // for (size_t i = 0; i < SENSOR_NUM; i++)
+    // {
+    //     printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
+    // }
+    // for (size_t i = 0; i < SENSOR_NUM; i++)
+    // {
+    //     printf("\nSensor %d Direction: [%.4f, %.4f]\n", i, directional_component_vector[i][0], directional_component_vector[i][1]);
+    // }
 }
 
 /**
@@ -264,7 +263,7 @@ void Flame_Init(int *chs)
     _DMA_Init();
     _ADC_Start();
     _Init_Directional_Component_Vector();
-    _Timer_Init(960, 1000); // 10ms마다 인터럽트 발생 (TIMXCLK 96MHz / 960 = 100kHz, ARR=1000 → 10ms)
+    _Timer_Init(960, 10); // 10ms마다 인터럽트 발생 (TIMXCLK 96MHz / 960 = 100kHz, ARR=10 → 10ms)
 }
 
 // /**
@@ -495,39 +494,32 @@ static int kf_initialized = 0;
  *    B[1][0] =  Kp * yaw_dir * max(S1, S3)
  *    B[3][0] = -Kp * yaw_dir * max(S1, S3)
  */
-extern volatile unsigned char pump_auto_state;
-
 static void Update_B_Matrix(const volatile float *z)
 {
-    /* 펌프 작동 중이면 모터 입력 무시 → B = 0 */
-    if (pump_auto_state)
-    {
-        for (int i = 0; i < N; i++)
-            for (int j = 0; j < CONTROL_DIM; j++)
-                kf_B[i][j] = 0.0f;
-        return;
-    }
-
     float s0 = z[0], s1 = z[1], s2 = z[2], s3 = z[3];
 
-    /* Pitch 축: S0(상) vs S2(하) → u[1] = servo */
-    float pitch_dir = (s0 > s2) ? 1.0f : -1.0f;
-
-    /* Yaw 축: S1 vs S3 → u[0] = stepper */
-    float yaw_dir = (s1 > s3) ? 1.0f : -1.0f;
-
-    /* B 행렬 초기화 (교차 항은 0) */
+    // B 행렬 초기화 (교차 항은 0)
     for (int i = 0; i < N; i++)
         for (int j = 0; j < CONTROL_DIM; j++)
             kf_B[i][j] = 0.0f;
 
-    /* Pitch 열 (u[1]) */
-    kf_B[0][1] = KALMAN_B_Kp * pitch_dir;
-    kf_B[2][1] = -KALMAN_B_Kp * pitch_dir;
+    // Pitch (u[1]): S0 vs S2
+    if (s0 > s2) {
+        kf_B[0][1] = KALMAN_B_Kp;
+        kf_B[2][1] = 1.1f * KALMAN_B_Kp;
+    } else {
+        kf_B[0][1] = 1.1f * KALMAN_B_Kp;
+        kf_B[2][1] = KALMAN_B_Kp;
+    }
 
-    /* Yaw 열 (u[0]) */
-    kf_B[1][0] = KALMAN_B_Kp * yaw_dir;
-    kf_B[3][0] = -KALMAN_B_Kp * yaw_dir;
+    // Yaw (u[0]): S1 vs S3
+    if (s1 > s3) {
+        kf_B[1][0] = KALMAN_B_Kp;
+        kf_B[3][0] = 1.1f * KALMAN_B_Kp;
+    } else {
+        kf_B[1][0] = 1.1f * KALMAN_B_Kp;
+        kf_B[3][0] = KALMAN_B_Kp;
+    }
 }
 
 static void Kalman_Init(const volatile float *z_init)
@@ -638,18 +630,9 @@ void Kalman_Filter(volatile float *z, volatile float *x_out, volatile float *u)
 
     mat_mul(kf_P, IK, P_pred);
 
-    // 출력 (NaN 방지: 발산 시 측정치로 리셋)
+    // 출력
     for (int i = 0; i < N; i++)
-    {
-        if (kf_x[i] != kf_x[i]) /* NaN check */
-        {
-            kf_initialized = 0;
-            for (int j = 0; j < N; j++)
-                x_out[j] = z[j];
-            return;
-        }
         x_out[i] = kf_x[i];
-    }
 }
 
 // /* 원본 _get_linearize_sensor_data (중앙값 + EMA 버전) */
