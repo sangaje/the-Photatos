@@ -877,9 +877,9 @@ flowchart TD
 
 모터 제어 입력의 급격한 변화를 억제하기 위해 화염 벡터에 EMA를 적용합니다:
 
-$$\text{vx}_{n} = \alpha \cdot \text{vx\_raw}_{n} + (1 - \alpha) \cdot \text{vx}_{n-1}, \quad \alpha = 0.1$$
+$$vx_n = \alpha \cdot vx^{raw}_n + (1 - \alpha) \cdot vx_{n-1}, \quad \alpha = 0.1$$
 
-$$\text{vy}_{n} = \alpha \cdot \text{vy\_raw}_{n} + (1 - \alpha) \cdot \text{vy}_{n-1}$$
+$$vy_n = \alpha \cdot vy^{raw}_n + (1 - \alpha) \cdot vy_{n-1}$$
 
 $\alpha = 0.1$은 약 10 프레임(500ms)의 시정수를 가지며, 높은 주파수 노이즈를 효과적으로 억제합니다.
 
