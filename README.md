@@ -1,136 +1,130 @@
 # the-Photatos
 
-> **STM32 기반 자율 소화 로봇 프로젝트**  
-> 4채널 IR 화염 센서로 화염 방향을 추정하고, 스테퍼/서보 모터로 조준한 뒤 워터 펌프를 자동 제어합니다.
+## 1. 프로젝트 개요
+
+**the-Photatos**는 
+STM32 보드와 IR 화염 센서를 이용해 **화염의 위치를 탐지하고 자동으로 소화하는 자율 소화 시스템**입니다.  
+센서 데이터를 실시간으로 수집하고, 스테퍼 모터/서보 모터를 이용해 화염 방향으로 분사 장치를 조준한 뒤, 워터 펌프를 작동시켜 초기 화재를 자동으로 진압하는 것을 목표로 합니다.
 
 ---
 
-## 한눈에 보기
+## 2. 프로젝트 목표
 
-- **프로젝트 유형:** Embedded Systems / Robotics / Control
-- **핵심 보드:** STM32F411xE
-- **주요 언어:** C, Python, Jupyter Notebook
-- **핵심 기능:** 화염 감지, 방향 벡터 추정, 자동 조준, 자동 소화, 실시간 모니터링
-
----
-
-## 주요 기능
-
-- **4채널 IR 화염 감지**  
-  ADC + DMA 기반으로 센서 값을 연속 수집합니다.
-
-- **화염 방향 추정**  
-  선형화된 센서 데이터와 칼만 필터를 이용해 화염 방향 벡터를 계산합니다.
-
-- **자동 조준 제어**  
-  스테퍼 모터(Pan)와 서보 모터(Tilt)를 사용해 화염 방향으로 헤드를 이동합니다.
-
-- **자동 워터 펌프 제어**  
-  화염이 안정적으로 감지되면 펌프를 켜고, 소화가 감지되면 자동으로 종료���니다.
-
-- **실시간 PC 모니터링**  
-  Python 기반 시리얼 모니터링 도구로 센서 값과 방향 벡터를 시각화합니다.
+- 다중 IR 센서를 이용한 화염 방향 추정
+- STM32 기반 실시간 임베디드 제어 시스템 구현
+- 팬/틸트(Pan-Tilt) 구조를 통한 자동 조준
+- 워터 펌프 자동 제어를 통한 자율 소화
+- Python 기반 시리얼 모니터링 도구를 이용한 상태 시각화
 
 ---
 
-## 사용 기술
+## 3. 시스템 구성
 
-### Firmware
-- Bare-metal C
-- STM32F411xE
+```text
+[ Flame ]
+   ↓
+[ IR Flame Sensors ]
+   ↓
+[ ADC + DMA Sampling ]
+   ↓
+[ Signal Processing / Estimation ]
+   ↓
+[ Direction Calculation ]
+   ↓
+[ Stepper + Servo Motor Control ]
+   ↓
+[ Water Pump Activation ]
+```
+
+---
+
+## 4. 주요 기능
+
+### 4.1 화염 탐지
+- 4채널 IR 화염 센서 사용
+- ADC + DMA 기반 연속 샘플링
+- 센서 값 필터링 및 신호 보정
+
+### 4.2 화염 위치 추정
+- 다중 센서 입력을 기반으로 화염 방향 계산
+- 선형화 및 필터링 적용
+- EMA / Kalman 기반 추정 로직 포함
+
+### 4.3 자동 조준
+- **Stepper Motor**: 좌우(Pan) 회전
+- **Servo Motor**: 상하(Tilt) 각도 제어
+- 추정된 화염 방향으로 분사 장치 자동 정렬
+
+### 4.4 자동 소화
+- 워터 펌프 ON/OFF 제어
+- 화염 감지 상태에 따라 분사 수행
+- 소화 완료 후 시스템 복귀 가능
+
+### 4.5 실시간 모니터링
+- UART를 통해 센서 데이터 전송
+- Python 스크립트로 실시간 그래프 확인
+- 실험 데이터 분석 및 튜닝 지원
+
+---
+
+## 5. 사용 기술
+
+### Firmware / Embedded
+- **STM32F411xE**
+- **C language**
 - ADC / DMA
 - Timer Interrupt
-- PWM Servo Control
-- Stepper Motor Control
-- UART DMA Telemetry
+- UART
+- PWM
+- GPIO Control
 
-### Analysis & Monitoring
-- Python
-- matplotlib
-- pyserial
-- NumPy
-- Jupyter Notebook
+### Analysis / Visualization
+- **Python**
+- **matplotlib**
+- **pyserial**
+- **Jupyter Notebook**
 
 ---
 
-## 시스템 구성
+## 6. 디렉토리 구조
 
 ```text
-IR Flame Sensors
-   ↓
-ADC + DMA Sampling
-   ↓
-Signal Processing / Kalman Filter
-   ↓
-Fire Direction Vector Estimation
-   ↓
-Pan/Tilt Motor Control
-   ↓
-Pump Auto Control
-   ↓
-UART Telemetry → Python Live Monitor
+src/         STM32 펌웨어 코드
+analysis/    Python 기반 실시간 모니터링 및 데이터 분석
+README.md    프로젝트 설명 문서
+location.py  초기 실험용 위치 계산 코드
 ```
 
 ---
 
-## 프로젝트 구조
+## 7. 빌드 및 실행
 
-```text
-src/         STM32 펌웨어 소스
-analysis/    Python 모니터링 및 실험 데이터 분석
-README.md    프로젝트 소개
-location.py  초기 실험용 코드
-```
-
----
-
-## 실행 / 빌드
-
-### Firmware 빌드
+### 7.1 펌웨어 빌드
 ```bash
 cd src
 make
 ```
 
-### 펌웨어 플래시
-```bash
-cd src
-make flash
-```
-
-### 실시간 모니터 실행
+### 7.2 실시간 모니터 실행
 ```bash
 cd analysis
 python live_monitor.py
 ```
 
-> `src/Makefile`은 ARM GNU Toolchain과 STM32CubeProgrammer CLI 환경을 기준으로 작성되어 있습니다.
+---
+
+## 8. 기대 효과
+
+- 초기 화재 대응 자동화 시스템 프로토타입 구현
+- 임베디드 제어, 센서 신호 처리, 모터 제어를 통합한 시스템 설계 경험 확보
+- 실시간 데이터 기반 제어 알고리즘 검증 가능
 
 ---
 
-## 포트폴리오 포인트
+## 9. 향후 개선 방향
 
-이 프��젝트에서는 아래 역량을 보여줍니다.
-
-- **임베디드 펌웨어 설계**
-- **실시간 센서 데이터 처리**
-- **제어 로직 및 상태 머신 구현**
-- **STM32 주변장치 직접 제어 (ADC, DMA, TIM, UART, PWM)**
-- **Python 기반 시각화 및 실험 분석**
-
----
-
-## 대표 구현 파일
-
-- `src/main.c` — 메인 루프, 모터 제어 ISR, 텔레메트리 출력
-- `src/flame.c` — 화염 센서 처리, 선형화, 칼만 필터, 방향 벡터 계산
-- `src/stepper.c` — 스테퍼 모터 제어
-- `src/servo.c` — 서보 PWM 제어
-- `src/pump.c` — 자동 펌프 제어 로직
-- `analysis/live_monitor.py` — 실시간 시각화 도구
-
----
-
-## 한 줄 소개
-
-**화염을 감지하고 방향을 추정해 자동으로 조준·소화하는 STM32 기반 자율 소화 로봇입니다.**
+- 화염 위치 추정 정확도 향상
+- 서보/스테퍼 제어 정밀도 개선
+- 소화 성공 여부 판단 알고리즘 추가
+- 카메라/열화상 센서와 융합한 고도화
+- 소형 자율 소화 로봇 플랫폼으로 확장
